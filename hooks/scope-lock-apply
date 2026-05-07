@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# hooks/scope-lock-apply
+# Compute and write the .scope-lock file for a plan.
+#
+# Usage: scope-lock-apply <plan-path>
+#
+# Extracts the "## Scope Manifest" section from <plan-path>, computes its
+# sha256, and writes the digest to <plan-path>.scope-lock via shell
+# redirection.
+#
+# This helper exists because the Write/Edit/MultiEdit tools are blocked for
+# *.scope-lock paths by hooks/pre-tool-scope-guard (to prevent silent scope
+# tampering by implementation skills or subagents). The scope-lock skill is
+# the only legitimate writer of these files, and calling this helper via the
+# Bash tool is the sanctioned path — it uses shell redirection rather than
+# the Write tool, so the guard never fires.
+#
+# The hash format is a single bare hex sha256 digest, which is exactly what
+# tests/plan-scope-check.sh --verify-lock expects:
+#   expected="$(awk 'NF && !/^#/ {print; exit}' "$lock")"
+
+set -euo pipefail
+
+plan="${1:-}"
+
+if [ -z "$plan" ]; then
+    printf 'Usage: scope-lock-apply <plan-path>\n' >&2
+    exit 3
+fi
+
+if [ ! -f "$plan" ]; then
+    printf 'Error: plan file not found: %s\n' "$plan" >&2
+    exit 1
+fi
+
+# Verify the plan has a Scope Manifest section before attempting to hash it.
+if ! grep -qE '^## Scope Manifest[[:space:]]*$' "$plan"; then
+    printf 'Error: no "## Scope Manifest" section found in %s\n' "$plan" >&2
+    printf 'The manifest section is required before locking. See skills/scope-lock/SKILL.md.\n' >&2
+    exit 1
+fi
+
+# Compute sha256 of the manifest section.
+# The awk pattern below is intentionally identical to extract_manifest() in
+# tests/plan-scope-check.sh — the byte stream must match exactly so that
+# tests/plan-scope-check.sh --verify-lock produces the same hash.
+# Extract to a temp file to avoid duplicating the awk script across sha256
+# backend branches.
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+
+awk '
+    /^## Scope Manifest[[:space:]]*$/ { in_section = 1; print; next }
+    in_section && /^## / { in_section = 0 }
+    in_section { print }
+' "$plan" > "$tmpfile"
+
+if command -v sha256sum >/dev/null 2>&1; then
+    hash=$(sha256sum < "$tmpfile" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+    hash=$(shasum -a 256 < "$tmpfile" | awk '{print $1}')
+else
+    printf 'Error: sha256sum or shasum is required but neither was found\n' >&2
+    exit 1
+fi
+
+if [ -z "$hash" ]; then
+    printf 'Error: failed to compute sha256 for %s\n' "$plan" >&2
+    exit 1
+fi
+
+lock_file="${plan}.scope-lock"
+printf '%s\n' "$hash" > "$lock_file"
+printf 'scope-lock-apply: %s written (sha256=%s…)\n' "$lock_file" "${hash:0:12}"

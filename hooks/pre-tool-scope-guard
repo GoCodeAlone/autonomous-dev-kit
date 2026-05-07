@@ -10,7 +10,7 @@
 #              — git push / gh pr create when locked plan hash mismatches
 #              — git push / git commit to main or master       (unless SUPERPOWERS_ALLOW_DEFAULT_BRANCH=1)
 #   Write / Edit / MultiEdit tool
-#              — *.scope-lock files                            (unless SUPERPOWERS_SCOPE_LOCK_WRITE=1)
+#              — *.scope-lock files                            (use hooks/scope-lock-apply via Bash instead)
 #              — docs/plans/*.md when plan is Locked           (unless SUPERPOWERS_PLAN_LOCK_WRITE=1)
 #
 # Global opt-out: set SUPERPOWERS_HOOKS_DISABLE=1 in the *operator's* terminal
@@ -144,7 +144,7 @@ case "$tool_name" in
         # ── 5. scope-lock files (always blocked unless sentinel env var) ─────
         if printf '%s' "$fpath" | grep -qE '\.scope-lock$'; then
             if [ "${SUPERPOWERS_SCOPE_LOCK_WRITE:-}" != "1" ]; then
-                block "Writing to '$(basename "$fpath")' is blocked — .scope-lock files are written exclusively by the scope-lock skill during alignment-check PASS. Direct edits break the manifest integrity guarantee and allow silent scope tampering. To update the lock legitimately: go through the unlock path (recording-decisions → update manifest → re-run alignment-check), which will regenerate the lock file."
+                block "Writing to '$(basename "$fpath")' is blocked — .scope-lock files must be written by the scope-lock skill's helper, not via the Write tool. Run: bash \"\${CLAUDE_PLUGIN_ROOT}/hooks/scope-lock-apply\" <plan-path>. The helper extracts the Scope Manifest section, computes its sha256, and writes the lock file via shell redirection (which is not blocked). Direct Write/Edit calls break the manifest integrity guarantee and allow silent scope tampering. To update the lock legitimately after a scope reduction: go through the unlock path (recording-decisions → update manifest → re-run alignment-check → re-run scope-lock-apply)."
             fi
         fi
 
