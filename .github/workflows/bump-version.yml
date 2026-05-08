@@ -1,0 +1,76 @@
+name: Bump Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'New version number (semver, e.g. 5.8.0)'
+        required: true
+        type: string
+
+concurrency:
+  group: bump-version
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate semver input
+        run: |
+          if ! echo "${{ inputs.version }}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ERROR: '${{ inputs.version }}' is not valid semver (e.g. 5.8.0)" >&2
+            exit 1
+          fi
+
+      - name: Bump version in all manifests
+        run: bash scripts/bump-version.sh "${{ inputs.version }}"
+
+      - name: Verify version consistency
+        run: bash tests/version-check.sh
+
+      - name: Commit, tag, and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -u
+          if git diff --cached --quiet; then
+            echo "Nothing to commit – version files already at ${{ inputs.version }}."
+          else
+            git commit -m "chore: bump version to ${{ inputs.version }}"
+          fi
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ inputs.version }} already exists; skipping tag creation."
+          else
+            git tag "v${{ inputs.version }}"
+          fi
+          git push --follow-tags origin HEAD
+
+      - name: Notify superpowers-marketplace
+        env:
+          REPO_DISPATCH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN }}
+        run: |
+          if [[ -z "${REPO_DISPATCH_TOKEN:-}" ]]; then
+            echo "REPO_DISPATCH_TOKEN secret is not set; skipping marketplace notification." >&2
+            exit 0
+          fi
+          response=$(curl -sL -w "\n%{http_code}" -X POST \
+            -H "Authorization: token ${REPO_DISPATCH_TOKEN}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/GoCodeAlone/superpowers-marketplace/dispatches \
+            -d "{\"event_type\": \"superpowers-version-bump\", \"client_payload\": {\"version\": \"${{ inputs.version }}\"}}")
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+          if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+            echo "ERROR: marketplace dispatch failed (HTTP ${http_code}): ${body}" >&2
+            exit 1
+          fi
+          echo "Dispatched superpowers-version-bump event to GoCodeAlone/superpowers-marketplace (HTTP ${http_code})"
