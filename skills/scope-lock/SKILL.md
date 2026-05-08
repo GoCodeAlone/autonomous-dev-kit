@@ -104,7 +104,11 @@ The unlock path is intentionally heavyweight. Cheap unlock = no lock at all.
 
 **`alignment-check` (pre-lock and re-lock):**
 - After PASS, edit the plan's `**Status:**` line to `Locked <UTC ISO-8601 timestamp>`.
-- Compute `sha256` of the manifest section (from `## Scope Manifest` to the next `##` heading) and write it to `<plan-path>.scope-lock`. This is the lock file.
+- Write the lock file by running the helper via Bash (do **not** use the Write tool — the Write tool is blocked for `*.scope-lock` paths by the scope guard hook):
+  ```
+  bash "${CLAUDE_PLUGIN_ROOT}/hooks/scope-lock-apply" <plan-path>
+  ```
+  The helper extracts the `## Scope Manifest` section, computes its sha256, and writes `<plan-path>.scope-lock` via shell redirection. It prints the path and hash prefix on success, or an error message and exits non-zero on failure.
 - Commit both files in the same commit: `chore: lock scope for <feature> (alignment passed)`.
 
 **`subagent-driven-development` (per-task checkpoint):**

@@ -130,7 +130,7 @@ Re-run alignment check after revision. **Max 2 revision cycles** before escalati
 After alignment passes, **lock the plan's scope** so subsequent execution cannot silently rescope. Invoke `superpowers:scope-lock` with the plan path. The scope-lock skill:
 
 1. Stamps the plan's `**Status:**` line with `Locked <UTC ISO-8601 timestamp>`.
-2. Computes the manifest's sha256 and writes `<plan-path>.scope-lock`.
+2. Writes the lock file by running `bash "${CLAUDE_PLUGIN_ROOT}/hooks/scope-lock-apply" <plan-path>` (do **not** use the Write tool — it is blocked for `*.scope-lock` paths). The helper computes the manifest's sha256 and writes `<plan-path>.scope-lock` via shell redirection.
 3. Commits both files (`chore: lock scope for <feature> (alignment passed)`).
 
 After the lock is in place, proceed to execution:

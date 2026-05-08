@@ -10,7 +10,8 @@
 #              — git push / gh pr create when locked plan hash mismatches
 #              — git push / git commit to main or master       (unless SUPERPOWERS_ALLOW_DEFAULT_BRANCH=1)
 #   Write / Edit / MultiEdit tool
-#              — *.scope-lock files                            (unless SUPERPOWERS_SCOPE_LOCK_WRITE=1)
+#              — *.scope-lock files                            (agent path: hooks/scope-lock-apply via Bash;
+#                                                              operator path: SUPERPOWERS_SCOPE_LOCK_WRITE=1)
 #              — docs/plans/*.md when plan is Locked           (unless SUPERPOWERS_PLAN_LOCK_WRITE=1)
 #
 # Global opt-out: set SUPERPOWERS_HOOKS_DISABLE=1 in the *operator's* terminal
@@ -141,10 +142,23 @@ case "$tool_name" in
     while IFS= read -r fpath; do
         [ -z "$fpath" ] && continue
 
-        # ── 5. scope-lock files (always blocked unless sentinel env var) ─────
+        # ── 5. scope-lock files ──────────────────────────────────────────────
+        # Agent path:   bash "${CLAUDE_PLUGIN_ROOT}/hooks/scope-lock-apply" <plan-path>
+        # Operator path (pre-session): export SUPERPOWERS_SCOPE_LOCK_WRITE=1
         if printf '%s' "$fpath" | grep -qE '\.scope-lock$'; then
             if [ "${SUPERPOWERS_SCOPE_LOCK_WRITE:-}" != "1" ]; then
-                block "Writing to '$(basename "$fpath")' is blocked — .scope-lock files are written exclusively by the scope-lock skill during alignment-check PASS. Direct edits break the manifest integrity guarantee and allow silent scope tampering. To update the lock legitimately: go through the unlock path (recording-decisions → update manifest → re-run alignment-check), which will regenerate the lock file."
+                _reason="Writing to '$(basename "$fpath")' is blocked —"
+                _reason="${_reason} .scope-lock files must be written by the scope-lock skill's helper,"
+                _reason="${_reason} not via the Write tool."
+                _reason="${_reason} Run: bash \"\${CLAUDE_PLUGIN_ROOT}/hooks/scope-lock-apply\" <plan-path>."
+                _reason="${_reason} The helper extracts the Scope Manifest section, computes its sha256,"
+                _reason="${_reason} and writes the lock file via shell redirection (which is not blocked)."
+                _reason="${_reason} Direct Write/Edit calls break the manifest integrity guarantee"
+                _reason="${_reason} and allow silent scope tampering."
+                _reason="${_reason} To update the lock legitimately after a scope reduction:"
+                _reason="${_reason} use the unlock path (recording-decisions → update manifest"
+                _reason="${_reason} → re-run alignment-check → re-run scope-lock-apply)."
+                block "$_reason"
             fi
         fi
 
