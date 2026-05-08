@@ -1,0 +1,40 @@
+name: Version Consistency Check
+
+on:
+  push:
+    paths:
+      - '.claude-plugin/plugin.json'
+      - '.claude-plugin/marketplace.json'
+      - '.cursor-plugin/plugin.json'
+      - 'scripts/bump-version.sh'
+      - 'tests/version-check.sh'
+      - '.github/workflows/version-check.yml'
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    paths:
+      - '.claude-plugin/plugin.json'
+      - '.claude-plugin/marketplace.json'
+      - '.cursor-plugin/plugin.json'
+      - 'scripts/bump-version.sh'
+      - 'tests/version-check.sh'
+      - '.github/workflows/version-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version consistency across plugin manifests
+        run: bash tests/version-check.sh
+
+      - name: Check version matches latest git tag (on tag push)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: bash tests/version-check.sh --check-tag
