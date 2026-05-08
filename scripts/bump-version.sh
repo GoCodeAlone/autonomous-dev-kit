@@ -63,7 +63,7 @@ for rel_path in "${VERSION_FILES[@]}"; do
     continue
   fi
   if ! grep -qF "\"version\": \"${OLD_VERSION}\"" "$abs_path"; then
-    echo "ERROR: version string '${OLD_VERSION}' not found in $rel_path; skipping" >&2
+    echo "ERROR: version string '${OLD_VERSION}' not found in $rel_path; cannot update" >&2
     ERRORS=$((ERRORS + 1))
     continue
   fi
