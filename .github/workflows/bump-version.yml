@@ -3,9 +3,18 @@ name: Bump Version
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'New version number (semver, e.g. 5.8.0)'
+      bump_type:
+        description: 'Semver component to increment (ignored when version is set)'
         required: true
+        type: choice
+        default: patch
+        options:
+          - major
+          - minor
+          - patch
+      version:
+        description: 'Explicit version override (semver, e.g. 5.8.0). Leave blank to auto-increment.'
+        required: false
         type: string
 
 concurrency:
@@ -24,33 +33,61 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate semver input
+      - name: Resolve target version
+        id: resolve
         run: |
-          if ! echo "${{ inputs.version }}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "ERROR: '${{ inputs.version }}' is not valid semver (e.g. 5.8.0)" >&2
-            exit 1
+          explicit="${{ inputs.version }}"
+          if [[ -n "$explicit" ]]; then
+            if ! echo "$explicit" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "ERROR: '$explicit' is not valid semver (e.g. 5.8.0)" >&2
+              exit 1
+            fi
+            echo "version=$explicit" >> "$GITHUB_OUTPUT"
+            echo "Resolved version: $explicit (explicit override)"
+          else
+            primary=".claude-plugin/plugin.json"
+            current=$(jq -r '.version' "$primary")
+            if [[ -z "$current" || "$current" == "null" ]]; then
+              echo "ERROR: Could not detect current version from $primary" >&2
+              exit 1
+            fi
+            if ! echo "$current" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "ERROR: Current version '$current' is not valid semver; use an explicit version override." >&2
+              exit 1
+            fi
+            IFS='.' read -r major minor patch <<< "$current"
+            case "${{ inputs.bump_type }}" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch) patch=$((patch + 1)) ;;
+              *) echo "ERROR: Unknown bump_type '${{ inputs.bump_type }}'" >&2; exit 1 ;;
+            esac
+            new_version="${major}.${minor}.${patch}"
+            echo "version=$new_version" >> "$GITHUB_OUTPUT"
+            echo "Resolved version: $new_version (auto ${{ inputs.bump_type }} bump from $current)"
           fi
 
       - name: Bump version in all manifests
-        run: bash scripts/bump-version.sh "${{ inputs.version }}"
+        run: bash scripts/bump-version.sh "${{ steps.resolve.outputs.version }}"
 
       - name: Verify version consistency
         run: bash tests/version-check.sh
 
       - name: Commit, tag, and push
         run: |
+          TARGET_VERSION="${{ steps.resolve.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -u
           if git diff --cached --quiet; then
-            echo "Nothing to commit – version files already at ${{ inputs.version }}."
+            echo "Nothing to commit – version files already at ${TARGET_VERSION}."
           else
-            git commit -m "chore: bump version to ${{ inputs.version }}"
+            git commit -m "chore: bump version to ${TARGET_VERSION}"
           fi
-          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
-            echo "Tag v${{ inputs.version }} already exists; skipping tag creation."
+          if git rev-parse "v${TARGET_VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${TARGET_VERSION} already exists; skipping tag creation."
           else
-            git tag "v${{ inputs.version }}"
+            git tag "v${TARGET_VERSION}"
           fi
           git push --follow-tags origin HEAD
 
@@ -58,6 +95,7 @@ jobs:
         env:
           REPO_DISPATCH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN }}
         run: |
+          TARGET_VERSION="${{ steps.resolve.outputs.version }}"
           if [[ -z "${REPO_DISPATCH_TOKEN:-}" ]]; then
             echo "REPO_DISPATCH_TOKEN secret is not set; skipping marketplace notification." >&2
             exit 0
@@ -66,7 +104,7 @@ jobs:
             -H "Authorization: token ${REPO_DISPATCH_TOKEN}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/GoCodeAlone/superpowers-marketplace/dispatches \
-            -d "{\"event_type\": \"superpowers-version-bump\", \"client_payload\": {\"version\": \"${{ inputs.version }}\"}}")
+            -d "{\"event_type\": \"superpowers-version-bump\", \"client_payload\": {\"version\": \"${TARGET_VERSION}\"}}")
           http_code=$(echo "$response" | tail -1)
           body=$(echo "$response" | head -n -1)
           if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
