@@ -35,7 +35,7 @@ if [[ $# -eq 1 ]]; then
   NEW_VERSION="$1"
   # Detect the current version from the primary file
   PRIMARY="${REPO_ROOT}/${VERSION_FILES[0]}"
-  OLD_VERSION=$(grep '"version"' "$PRIMARY" | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+  OLD_VERSION=$(grep '"version"' "$PRIMARY" | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/' || true)
   if [[ -z "$OLD_VERSION" ]]; then
     echo "ERROR: Could not detect current version from $PRIMARY" >&2
     exit 1
@@ -55,15 +55,26 @@ fi
 
 echo "Bumping version: $OLD_VERSION → $NEW_VERSION"
 
+ERRORS=0
 for rel_path in "${VERSION_FILES[@]}"; do
   abs_path="${REPO_ROOT}/${rel_path}"
   if [[ ! -f "$abs_path" ]]; then
     echo "WARNING: $rel_path not found, skipping" >&2
     continue
   fi
+  if ! grep -qF "\"version\": \"${OLD_VERSION}\"" "$abs_path"; then
+    echo "ERROR: version string '${OLD_VERSION}' not found in $rel_path; skipping" >&2
+    ERRORS=$((ERRORS + 1))
+    continue
+  fi
   sed -i.bak "s/\"version\": \"${OLD_VERSION}\"/\"version\": \"${NEW_VERSION}\"/" "$abs_path" && rm -f "${abs_path}.bak"
   echo "  Updated $rel_path"
 done
+
+if [[ $ERRORS -gt 0 ]]; then
+  echo "FAIL: $ERRORS file(s) could not be updated." >&2
+  exit 1
+fi
 
 echo "Done. Remember to:"
 echo "  1. Update RELEASE-NOTES.md with a new ## v${NEW_VERSION} section."

@@ -27,7 +27,7 @@ VERSION_FILES=(
 )
 
 extract_version() {
-  grep '"version"' "$1" | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/'
+  grep '"version"' "$1" | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/' || true
 }
 
 ERRORS=0
@@ -65,17 +65,20 @@ fi
 echo "OK: All version files agree on version $FIRST_VERSION"
 
 if [[ "$CHECK_TAG" == true ]]; then
-  # Get the latest semver tag (strip the leading 'v')
-  LATEST_TAG=$(git -C "$REPO_ROOT" tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
-  if [[ -z "$LATEST_TAG" ]]; then
-    echo "WARNING: No semver git tags found; skipping tag check." >&2
+  # Get the tag that points exactly at HEAD (e.g. when triggered by a tag push).
+  # Falls back gracefully if HEAD is not tagged.
+  HEAD_TAG=$(git -C "$REPO_ROOT" describe --tags --exact-match HEAD 2>/dev/null || true)
+  if [[ -z "$HEAD_TAG" ]]; then
+    echo "WARNING: HEAD is not at a semver tag; skipping tag check." >&2
+  elif ! echo "$HEAD_TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "WARNING: HEAD tag '$HEAD_TAG' is not a semver tag; skipping tag check." >&2
   else
-    TAG_VERSION="${LATEST_TAG#v}"
+    TAG_VERSION="${HEAD_TAG#v}"
     if [[ "$FIRST_VERSION" != "$TAG_VERSION" ]]; then
-      echo "ERROR: Plugin version '$FIRST_VERSION' does not match latest git tag '$LATEST_TAG'." >&2
+      echo "ERROR: Plugin version '$FIRST_VERSION' does not match HEAD tag '$HEAD_TAG'." >&2
       echo "       Run: scripts/bump-version.sh ${TAG_VERSION}" >&2
       exit 1
     fi
-    echo "OK: Plugin version $FIRST_VERSION matches latest git tag $LATEST_TAG"
+    echo "OK: Plugin version $FIRST_VERSION matches HEAD tag $HEAD_TAG"
   fi
 fi
