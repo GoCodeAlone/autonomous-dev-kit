@@ -38,20 +38,20 @@ jobs:
         run: |
           explicit="${{ inputs.version }}"
           if [[ -n "$explicit" ]]; then
-            if ! echo "$explicit" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            if ! [[ "$explicit" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "ERROR: '$explicit' is not valid semver (e.g. 5.8.0)" >&2
               exit 1
             fi
-            echo "version=$explicit" >> "$GITHUB_OUTPUT"
+            printf 'version=%s\n' "$explicit" >> "$GITHUB_OUTPUT"
             echo "Resolved version: $explicit (explicit override)"
           else
             primary=".claude-plugin/plugin.json"
-            current=$(jq -r '.version' "$primary")
+            current=$(grep '"version"' "$primary" | head -1 | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([0-9.]*\)".*/\1/p')
             if [[ -z "$current" || "$current" == "null" ]]; then
               echo "ERROR: Could not detect current version from $primary" >&2
               exit 1
             fi
-            if ! echo "$current" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            if ! [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "ERROR: Current version '$current' is not valid semver; use an explicit version override." >&2
               exit 1
             fi
@@ -63,7 +63,7 @@ jobs:
               *) echo "ERROR: Unknown bump_type '${{ inputs.bump_type }}'" >&2; exit 1 ;;
             esac
             new_version="${major}.${minor}.${patch}"
-            echo "version=$new_version" >> "$GITHUB_OUTPUT"
+            printf 'version=%s\n' "$new_version" >> "$GITHUB_OUTPUT"
             echo "Resolved version: $new_version (auto ${{ inputs.bump_type }} bump from $current)"
           fi
 
