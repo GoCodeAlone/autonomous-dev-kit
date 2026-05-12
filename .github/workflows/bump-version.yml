@@ -82,9 +82,17 @@ jobs:
       - name: Create branch, commit, and push
         id: branch
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_VERSION: ${{ steps.resolve.outputs.version }}
         run: |
           branch="chore/bump-version-${TARGET_VERSION}"
+          # Check early for an existing open PR to avoid redundant work
+          existing=$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty' || true)
+          if [[ -n "$existing" ]]; then
+            echo "PR #$existing already open for $branch; skipping."
+            echo "branch=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -u
@@ -95,7 +103,9 @@ jobs:
           fi
           git checkout -b "$branch"
           git commit -m "chore: bump version to ${TARGET_VERSION}"
-          git push -u origin "$branch"
+          # Use --force-with-lease to handle the case where the remote branch already
+          # exists from a previous interrupted run (safe because we just diverged from main)
+          git push --force-with-lease -u origin "$branch"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
       - name: Open pull request
@@ -105,7 +115,7 @@ jobs:
           TARGET_VERSION: ${{ steps.resolve.outputs.version }}
           BRANCH: ${{ steps.branch.outputs.branch }}
         run: |
-          existing=$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number' || true)
+          existing=$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number // empty' || true)
           if [[ -n "$existing" ]]; then
             echo "PR already open for $BRANCH (#$existing); skipping creation."
             exit 0

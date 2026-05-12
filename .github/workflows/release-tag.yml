@@ -47,8 +47,8 @@ jobs:
         env:
           TARGET_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if git rev-parse "v${TARGET_VERSION}" >/dev/null 2>&1; then
-            echo "Tag v${TARGET_VERSION} already exists; skipping."
+          if git ls-remote --tags origin "refs/tags/v${TARGET_VERSION}" | grep -q .; then
+            echo "Tag v${TARGET_VERSION} already exists on remote; skipping."
             echo "created=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
