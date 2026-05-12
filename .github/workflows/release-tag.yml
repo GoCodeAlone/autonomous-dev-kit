@@ -1,0 +1,82 @@
+name: Release Tag
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.claude-plugin/plugin.json'
+  workflow_dispatch:
+
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read current version
+        id: version
+        run: |
+          primary=".claude-plugin/plugin.json"
+          version=$(grep '"version"' "$primary" | head -1 | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([0-9.]*\)".*/\1/p')
+          if [[ -z "$version" ]]; then
+            echo "ERROR: Could not read version from $primary" >&2
+            exit 1
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: '$version' is not valid semver" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $version"
+
+      - name: Verify version consistency across manifests
+        run: bash tests/version-check.sh
+
+      - name: Create and push tag (if new)
+        id: tag
+        env:
+          TARGET_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if git rev-parse "v${TARGET_VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${TARGET_VERSION} already exists; skipping."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${TARGET_VERSION}"
+          git push origin "v${TARGET_VERSION}"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Notify superpowers-marketplace
+        if: steps.tag.outputs.created == 'true'
+        env:
+          REPO_DISPATCH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN }}
+          TARGET_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [[ -z "${REPO_DISPATCH_TOKEN:-}" ]]; then
+            echo "REPO_DISPATCH_TOKEN secret is not set; skipping marketplace notification." >&2
+            exit 0
+          fi
+          response=$(curl -sL -w "\n%{http_code}" -X POST \
+            -H "Authorization: token ${REPO_DISPATCH_TOKEN}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/GoCodeAlone/superpowers-marketplace/dispatches \
+            -d "{\"event_type\": \"superpowers-version-bump\", \"client_payload\": {\"version\": \"${TARGET_VERSION}\"}}")
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+          if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+            echo "ERROR: marketplace dispatch failed (HTTP ${http_code}): ${body}" >&2
+            exit 1
+          fi
+          echo "Dispatched superpowers-version-bump event to GoCodeAlone/superpowers-marketplace (HTTP ${http_code})"
