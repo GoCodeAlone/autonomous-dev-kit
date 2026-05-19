@@ -144,11 +144,15 @@ check_manifest_wellformed() {
   if [ -n "$grouping_rows" ]; then
     # Extract all `Task N` mentions from column 3 of the table (the Tasks col).
     # Robust split: take everything between the 3rd and 4th `|`, then grep
-    # `Task N` substrings from it.
+    # `Task N` substrings from it. The optional `[A-Za-z]*` suffix captures
+    # split-task ids like `Task 17a` and `Task 17b` as distinct from
+    # `Task 17`. Without the suffix the substring `Task 17` would alias
+    # both — a real failure mode observed when authors split tasks for
+    # parallel dispatch.
     local task_ids
     task_ids="$(printf '%s\n' "$grouping_rows" \
               | awk -F'|' '{print $4}' \
-              | grep -oE 'Task[[:space:]]+[0-9]+' \
+              | grep -oE 'Task[[:space:]]+[0-9]+[A-Za-z]*' \
               | sed -E 's/[[:space:]]+/ /g' \
               | sort -u || true)"
     while read -r task_ref; do
@@ -164,8 +168,12 @@ check_manifest_wellformed() {
 
     # Also: verify every `### Task N:` heading in the body appears in the
     # grouping table (no orphan tasks that ship without a PR home).
+    # Same alpha-suffix capture as task_ids extraction so `### Task 17a:` is
+    # treated as a distinct task from `### Task 17:`.
     local body_tasks
-    body_tasks="$(grep -oE '^### Task [0-9]+' "$plan" | sed -E 's/^### //' | sort -u || true)"
+    body_tasks="$(grep -oE '^### Task [0-9]+[A-Za-z]*' "$plan" \
+                 | sed -E 's/^### //' \
+                 | sort -u || true)"
     while read -r task_ref; do
       [ -z "$task_ref" ] && continue
       if ! printf '%s\n' "$task_ids" | grep -qx "$task_ref"; then
