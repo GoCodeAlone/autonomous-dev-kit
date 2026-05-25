@@ -23,7 +23,7 @@ Autonomous Dev Kit originated as a fork of Jesse Vincent's [Superpowers](https:/
 
 ### Claude Code (via Plugin Marketplace)
 
-If you have the old `autodev` plugin installed, **uninstall it first** before installing `autodev`:
+If you have the old `superpowers` plugin installed, **uninstall it first** before installing `autodev`:
 
 ```bash
 # 1. Remove existing superpowers plugin (if installed)
