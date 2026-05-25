@@ -1,6 +1,6 @@
-# Superpowers Skills Improvements — Implementation Plan
+# Autonomous Dev Kit Skills Improvements — Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For Claude:** REQUIRED SUB-SKILL: Use autodev:executing-plans to implement this plan task-by-task.
 
 **Goal:** Address ten observed failure patterns in the autonomous-development pipeline by upgrading six existing skills and adding one new mini-skill for cross-cutting runtime-launch validation.
 
@@ -10,7 +10,7 @@
 
 **Sanitization:** Public skill set — every example, fixture, and comment must be generic. No specific project, company, version, or incident references. Generic technology terms used as examples (e.g. Go, Markdown, bash) are fine.
 
-**Design doc:** `docs/plans/2026-04-25-superpowers-skills-improvements-design.md` (commit 6bb1833)
+**Design doc:** `docs/plans/2026-04-25-autodev-skills-improvements-design.md` (commit 6bb1833)
 
 ---
 
@@ -1069,7 +1069,7 @@ When the orchestrator wants the pipeline to halt after alignment-check (no execu
 
 1. Save the plan to `docs/plans/<filename>.md` as normal.
 2. Commit the plan as normal.
-3. Invoke `superpowers:alignment-check` as normal.
+3. Invoke `autodev:alignment-check` as normal.
 4. **On alignment PASS: STOP.** Do NOT invoke subagent-driven-development.
 5. The plan + design sit in `docs/plans/` for future execution. The orchestrator (or a future invocation) can resume by passing the plan to `subagent-driven-development` directly.
 

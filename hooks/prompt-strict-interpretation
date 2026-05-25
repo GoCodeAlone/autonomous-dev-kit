@@ -5,7 +5,7 @@
 # to rescope, collapse PRs, or skip pipeline discipline — and a locked plan
 # exists in the current workspace.
 #
-# Does NOT block the prompt. Injects additional_context so the model sees the
+# Does NOT block the prompt. Injects hookSpecificOutput.additionalContext so the model sees the
 # reminder before it starts planning its response.
 #
 # Global opt-out: set SUPERPOWERS_HOOKS_DISABLE=1
@@ -111,37 +111,51 @@ Locked plan:     ${locked_plan_name}
 This phrase has historically been used as license to rescope, collapse PRs, or
 skip pipeline discipline. Under a Locked plan it authorizes NONE of those things.
 
-Mandated interpretations (from skills/using-superpowers/SKILL.md):
+Mandated interpretations (from skills/using-autodev/SKILL.md):
 
   "reorder as needed"        → reorder tasks within the same PR only; manifest unchanged
   "create a PR"              → create the number of PRs in the Scope Manifest's PR Grouping table
   "test locally"             → run every task's declared verification steps; CI still runs
   "make it work"             → implement the full manifest; surface blockers, do not trim scope
-  "ship a demo"              → no demo mode exists; ship the locked manifest or invoke unlock path
+  "ship a demo"              → no demo mode exists; ship the locked manifest or invoke amendment path
   "be quick / be efficient"  → parallelism, not skipping
   "go autonomous / auto mode"→ no discipline bypass; pipeline runs in full regardless
   "go ahead / just do it"    → proceed with the locked manifest; gates still apply
 
 If the user's intent genuinely conflicts with the locked manifest, STOP and ask.
 Do not pick a looser interpretation and proceed. The locked manifest wins until
-the user goes through the unlock path (recording-decisions + re-run alignment-check).
+the user goes through the amendment path (recording-decisions + re-run alignment-check).
 
-See skills/scope-lock/SKILL.md for the unlock path.
+See skills/scope-lock/SKILL.md for the amendment path.
 REMINDER
 )
 
-# Escape for JSON embedding.
-escape_for_json() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\"/\\\"}"
-    s="${s//$'\n'/\\n}"
-    s="${s//$'\r'/\\r}"
-    s="${s//$'\t'/\\t}"
-    printf '%s' "$s"
+emit_additional_context() {
+    local event_name="$1"
+    local context="$2"
+    if command -v jq >/dev/null 2>&1; then
+        jq -n --arg event "$event_name" --arg context "$context" \
+            '{hookSpecificOutput:{hookEventName:$event,additionalContext:$context}}'
+        return 0
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        EVENT_NAME="$event_name" CONTEXT="$context" python3 - <<'PY'
+import json
+import os
+
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": os.environ["EVENT_NAME"],
+        "additionalContext": os.environ["CONTEXT"],
+    }
+}))
+PY
+        return 0
+    fi
+    # No safe JSON encoder available. Exit successfully with no output rather
+    # than risk invalid hook JSON that breaks the host.
+    return 0
 }
 
-reminder_escaped=$(escape_for_json "$reminder")
-
-printf '{"additional_context":"%s"}\n' "$reminder_escaped"
+emit_additional_context "UserPromptSubmit" "$reminder"
 exit 0

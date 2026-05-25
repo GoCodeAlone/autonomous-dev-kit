@@ -41,11 +41,12 @@ usage() {
 
 # Extract the Scope Manifest section from a plan file. Prints lines from the
 # `## Scope Manifest` heading through (but not including) the next H2 heading
-# at start of line. Empty output if the section is absent.
+# or first `### Task` heading at start of line. Empty output if absent.
 extract_manifest() {
   awk '
     /^## Scope Manifest[[:space:]]*$/ { in_section = 1; print; next }
     in_section && /^## / { in_section = 0 }
+    in_section && /^### Task [0-9]+[A-Za-z]*([: ]|$)/ { in_section = 0 }
     in_section { print }
   ' "$1"
 }

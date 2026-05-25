@@ -22,7 +22,7 @@ host-neutral. Updated whenever a skill changes.
 | systematic-debugging | host-neutral | host-neutral | host-neutral | host-neutral | already portable (Group I) |
 | test-driven-development | host-neutral | host-neutral | host-neutral | host-neutral | already portable (Group I) |
 | using-git-worktrees | host-neutral | host-neutral | host-neutral | host-neutral | already portable (Group I) |
-| using-superpowers | host-neutral | host-neutral | host-neutral | host-neutral | host-access phrasing is prose-based ("In Claude Code: … In other environments: …"); no forbidden tokens |
+| using-autodev | host-neutral | host-neutral | host-neutral | host-neutral | host-access phrasing is prose-based ("In Claude Code: … In other environments: …"); no forbidden tokens |
 | verification-before-completion | host-neutral | host-neutral | host-neutral | host-neutral | already portable (Group I) |
 | writing-plans | host-neutral | host-neutral | host-neutral | host-neutral | Plan Mode reference is prose-based ("If you are running in Claude Code…"); no `<host:>` blocks needed |
 | writing-skills | host-conditional | host-conditional | host-conditional | host-conditional | `TodoWrite` checklist and tier-brand names wrapped in `<host: claude-code>` blocks |

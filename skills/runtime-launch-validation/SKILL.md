@@ -3,6 +3,8 @@ name: runtime-launch-validation
 description: Use after unit tests pass, before merge, when a change affects runtime behavior — launch the built artifact under realistic conditions and observe its behavior
 ---
 
+> Condensed format: load `autodev:condensed-pipeline-writing` to expand shorthand.
+
 # Runtime Launch Validation
 
 ## Iron Law

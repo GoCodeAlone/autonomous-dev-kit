@@ -12,7 +12,12 @@
 #   Write / Edit / MultiEdit tool
 #              — *.scope-lock files                            (agent path: hooks/scope-lock-apply via Bash;
 #                                                              operator path: SUPERPOWERS_SCOPE_LOCK_WRITE=1)
-#              — docs/plans/*.md when plan is Locked           (unless SUPERPOWERS_PLAN_LOCK_WRITE=1)
+#
+# Locked plan/design markdown is intentionally not blocked here. The lock is
+# over the Scope Manifest hash, not every explanatory paragraph. Design
+# backports, bug notes, and assumption corrections are legitimate as long as
+# the manifest hash still verifies; manifest drift is caught before push/PR
+# creation and at Stop time.
 #
 # Global opt-out: set SUPERPOWERS_HOOKS_DISABLE=1 in the *operator's* terminal
 # environment before starting the session. The agent cannot set this itself.
@@ -104,7 +109,7 @@ case "$tool_name" in
         locked_plan=$(find_locked_plan)
         if [ -n "$locked_plan" ]; then
             if ! verify_lock "$locked_plan"; then
-                block "Locked plan hash mismatch: $(basename "$locked_plan") — the Scope Manifest has been modified since it was locked. This means either the plan was edited directly (bypassing the unlock path) or the scope-lock file was corrupted. Resolve via the scope-lock unlock path (recording-decisions → update manifest → re-run alignment-check) before pushing or creating PRs."
+                block "Locked plan hash mismatch: $(basename "$locked_plan") — the Scope Manifest has been modified since it was locked. This means either the manifest was edited without the amendment path or the scope-lock file was corrupted. Resolve via the scope-lock amendment path (recording-decisions → update manifest → re-run alignment-check) before pushing or creating PRs."
             fi
         fi
     fi
@@ -155,21 +160,17 @@ case "$tool_name" in
                 _reason="${_reason} and writes the lock file via shell redirection (which is not blocked)."
                 _reason="${_reason} Direct Write/Edit calls break the manifest integrity guarantee"
                 _reason="${_reason} and allow silent scope tampering."
-                _reason="${_reason} To update the lock legitimately after a scope reduction:"
-                _reason="${_reason} use the unlock path (recording-decisions → update manifest"
+                _reason="${_reason} To update the lock legitimately after a manifest amendment:"
+                _reason="${_reason} use the amendment path (recording-decisions → update manifest"
                 _reason="${_reason} → re-run alignment-check → re-run scope-lock-apply)."
                 block "$_reason"
             fi
         fi
 
-        # ── 6. Locked plan files (blocked unless sentinel env var) ──────────
-        if printf '%s' "$fpath" | grep -qE 'docs/plans/[^/]+\.md$'; then
-            if [ "${SUPERPOWERS_PLAN_LOCK_WRITE:-}" != "1" ] && [ -f "$fpath" ]; then
-                if grep -q '\*\*Status:\*\* Locked' "$fpath" 2>/dev/null; then
-                    block "Editing '$(basename "$fpath")' is blocked — this plan is Locked. Direct plan edits bypass the unlock path and silently break the manifest hash. To modify the plan: (1) invoke recording-decisions to document the approved scope reduction as an ADR, (2) follow the scope-lock unlock path (update manifest → re-stamp lock). The unlock path is defined in skills/scope-lock/SKILL.md."
-                fi
-            fi
-        fi
+        # ── 6. Locked plan/design files ─────────────────────────────────────
+        # Allowed here. See file header: the push/PR/Stop hash guards enforce
+        # the Scope Manifest invariant without preventing legitimate design
+        # backports or non-manifest corrections.
     done <<< "$file_paths"
     ;;
 esac

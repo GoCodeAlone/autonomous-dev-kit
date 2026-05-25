@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# SessionStart hook for superpowers plugin
+# SessionStart hook for autodev plugin
 #
 # On every session start (startup|resume|clear|compact) this loads the
-# using-superpowers skill so the skills system is available before the first
+# using-autodev skill so the skills system is available before the first
 # turn. On compact|resume it ALSO injects a "resumption context" block that:
-#   - replays recent superpowers activity from .claude/superpowers-state/in-progress.jsonl
+#   - replays recent autodev activity from .claude/autodev-state/in-progress.jsonl
 #     (so a lead orchestrator knows which skills + subagents were in flight), and
 #   - extracts the first user message from the session transcript
 #     (so a subagent that just compacted can re-read its original task).
@@ -31,7 +31,7 @@ if command -v jq >/dev/null 2>&1; then
     [ -n "$cwd_from_hook" ] && cwd_dir="$cwd_from_hook"
 fi
 
-STATE_DIR="${cwd_dir}/.claude/superpowers-state"
+STATE_DIR="${cwd_dir}/.claude/autodev-state"
 STATE_FILE="${STATE_DIR}/in-progress.jsonl"
 
 # Wipe stale state at the start of a brand-new (or cleared) session.
@@ -48,7 +48,15 @@ if { [ "$source_kind" = "compact" ] || [ "$source_kind" = "resume" ]; } && comma
     activity=""
     if [ -f "$STATE_FILE" ]; then
         activity=$(tail -n 30 "$STATE_FILE" \
-            | jq -r '"- " + .ts + "  " + .tool + "  " + (.detail // "")' 2>/dev/null \
+            | jq -r '
+                "- " + (.ts // "?") + "  " +
+                (if (.ev // "") == "skill" then "skill " + (.sk // "?") + (if .args then " " + .args else "" end)
+                 elif (.ev // "") == "agent" then "agent " + (.ag // "?") + (if .d then " " + .d else "" end)
+                 elif (.ev // "") == "task" then "task " + (.tt // "?") + (if .id then " id=" + .id else "" end) + (if .d then " " + .d else "" end)
+                 elif (.ev // "") == "lock" then "lock " + (.pl // "?") + " " + (.st // "?") + (if .h then " h=" + .h[0:12] else "" end)
+                 elif (.ev // "") == "phase" then "phase " + (.pl // "?") + " " + (.ph // "?") + " " + (.st // "?") + (if .nx then " nx=" + .nx else "" end)
+                 else (.tool // "?") + " " + (.detail // .d // "")
+                 end)' 2>/dev/null \
             || tail -n 30 "$STATE_FILE")
     fi
 
@@ -66,7 +74,7 @@ if { [ "$source_kind" = "compact" ] || [ "$source_kind" = "resume" ]; } && comma
     fi
 
     if [ -n "$activity" ] || [ -n "$original_task" ]; then
-        resumption_section=$'\n\n<superpowers-resumption-context source="'"$source_kind"$'">'
+        resumption_section=$'\n\n<autodev-resumption-context source="'"$source_kind"$'">'
         case "$source_kind" in
             compact) source_phrase="just had a context-compaction event" ;;
             resume)  source_phrase="just resumed from a previous transcript" ;;
@@ -75,7 +83,7 @@ if { [ "$source_kind" = "compact" ] || [ "$source_kind" = "resume" ]; } && comma
         resumption_section+=$'\nThe session '"$source_phrase"$'. BEFORE answering the next message, reorient yourself using the context below. If you were mid-pipeline (brainstorming → writing-plans → alignment-check → subagent-driven-development → finishing-a-development-branch → pr-monitoring), pick up where you left off rather than re-deriving intent.'
         if [ -n "$original_task" ]; then
             # The first user message can contain arbitrary markup (tag-like
-            # tokens, even a literal "</superpowers-resumption-context>"),
+            # tokens, even a literal "</autodev-resumption-context>"),
             # which would terminate or nest inside the resumption block we
             # just opened. Wrap it in a fenced code block and pick a fence
             # length that does not appear inside the content.
@@ -86,47 +94,62 @@ if { [ "$source_kind" = "compact" ] || [ "$source_kind" = "resume" ]; } && comma
             resumption_section+=$'\n\n## Original task (first user message in this session)\n\n'"${fence}"$'\n'"${original_task}"$'\n'"${fence}"
         fi
         if [ -n "$activity" ]; then
-            resumption_section+=$'\n\n## Recent superpowers activity (most recent 30 events)\n\n'"$activity"
-            resumption_section+=$'\n\nIf any of those entries are dispatched subagents, check their status (still active? errored? rate-limited? zombied?) using your host\'s task-listing mechanism before proceeding. See superpowers:subagent-driven-development for the watchdog cadence and host-specific tools.'
+            resumption_section+=$'\n\n## Recent autodev activity (most recent 30 events)\n\n'"$activity"
+            resumption_section+=$'\n\nIf any of those entries are dispatched subagents, check their status (still active? errored? rate-limited? zombied?) using your host\'s task-listing mechanism before proceeding. See autodev:subagent-driven-development for the watchdog cadence and host-specific tools.'
         fi
-        resumption_section+=$'\n</superpowers-resumption-context>'
+        resumption_section+=$'\n</autodev-resumption-context>'
     fi
 fi
 
 # Legacy skills warning (preserved from upstream).
 warning_message=""
-legacy_skills_dir="${HOME}/.config/superpowers/skills"
+legacy_skills_dir="${HOME}/.config/autodev/skills"
 if [ -d "$legacy_skills_dir" ]; then
-    warning_message=$'\n\n<important-reminder>IN YOUR FIRST REPLY AFTER SEEING THIS MESSAGE YOU MUST TELL THE USER:⚠️ **WARNING:** Superpowers now uses Claude Code\'s skills system. Custom skills in ~/.config/superpowers/skills will not be read. Move custom skills to ~/.claude/skills instead. To make this message go away, remove ~/.config/superpowers/skills</important-reminder>'
+    warning_message=$'\n\n<important-reminder>IN YOUR FIRST REPLY AFTER SEEING THIS MESSAGE YOU MUST TELL THE USER:⚠️ **WARNING:** Autonomous Dev Kit now uses Claude Code\'s skills system. Custom skills in ~/.config/autodev/skills will not be read. Move custom skills to ~/.claude/skills instead. To make this message go away, remove ~/.config/autodev/skills</important-reminder>'
 fi
 
-using_superpowers_content=$(cat "${PLUGIN_ROOT}/skills/using-superpowers/SKILL.md" 2>&1 || echo "Error reading using-superpowers skill")
+using_autodev_content=$(cat "${PLUGIN_ROOT}/skills/using-autodev/SKILL.md" 2>&1 || echo "Error reading using-autodev skill")
 
-# Escape string for JSON embedding using bash parameter substitution.
-escape_for_json() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\"/\\\"}"
-    s="${s//$'\n'/\\n}"
-    s="${s//$'\r'/\\r}"
-    s="${s//$'\t'/\\t}"
-    printf '%s' "$s"
+session_context=$(cat <<CONTEXT
+<EXTREMELY_IMPORTANT>
+You have autodev.
+
+**Below is the full content of your 'autodev:using-autodev' skill - your introduction to using skills. For all other skills, use the 'Skill' tool:**
+
+${using_autodev_content}
+
+${warning_message}${resumption_section}
+</EXTREMELY_IMPORTANT>
+CONTEXT
+)
+
+emit_additional_context() {
+    local event_name="$1"
+    local context="$2"
+    if command -v jq >/dev/null 2>&1; then
+        jq -n --arg event "$event_name" --arg context "$context" \
+            '{hookSpecificOutput:{hookEventName:$event,additionalContext:$context}}'
+        return 0
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        EVENT_NAME="$event_name" CONTEXT="$context" python3 - <<'PY'
+import json
+import os
+
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": os.environ["EVENT_NAME"],
+        "additionalContext": os.environ["CONTEXT"],
+    }
+}))
+PY
+        return 0
+    fi
+    # No safe JSON encoder available. Exit successfully with no output rather
+    # than risk invalid hook JSON that breaks the host.
+    return 0
 }
 
-using_superpowers_escaped=$(escape_for_json "$using_superpowers_content")
-warning_escaped=$(escape_for_json "$warning_message")
-resumption_escaped=$(escape_for_json "$resumption_section")
-
-session_context="<EXTREMELY_IMPORTANT>\nYou have superpowers.\n\n**Below is the full content of your 'superpowers:using-superpowers' skill - your introduction to using skills. For all other skills, use the 'Skill' tool:**\n\n${using_superpowers_escaped}\n\n${warning_escaped}${resumption_escaped}\n</EXTREMELY_IMPORTANT>"
-
-cat <<EOF
-{
-  "additional_context": "${session_context}",
-  "hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "additionalContext": "${session_context}"
-  }
-}
-EOF
+emit_additional_context "SessionStart" "$session_context"
 
 exit 0

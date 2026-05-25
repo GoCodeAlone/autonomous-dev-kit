@@ -1,7 +1,9 @@
 ---
-name: using-superpowers
+name: using-autodev
 description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
 ---
+
+> Condensed format: load `autodev:condensed-pipeline-writing` to expand shorthand.
 
 <EXTREMELY-IMPORTANT>
 If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
@@ -13,9 +15,7 @@ This is not negotiable. This is not optional. You cannot rationalize your way ou
 
 ## How to Access Skills
 
-**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
-
-**In other environments:** Check your platform's documentation for how skills are loaded.
+Use the current host's skill-loading mechanism. When a skill is invoked or loaded, follow its instructions directly. Do not bypass the skill body by relying on memory of similarly named workflows.
 
 # Using Skills
 
@@ -83,7 +83,7 @@ When multiple skills could apply, use this order:
 3. **Pipeline skills auto-chain** — these invoke each other automatically in the autonomous pipeline:
    brainstorming → adversarial-design-review (design phase) → writing-plans → adversarial-design-review (plan phase) → alignment-check → **scope-lock** → subagent-driven-development → finishing-a-development-branch → pr-monitoring → post-merge-retrospective
 
-   Cross-cutting skills invoked from within the pipeline when conditions trigger: `recording-decisions` (when designs/plans make non-trivial trade-offs, including user-approved scope reductions); `scope-lock` (re-checked at every per-task checkpoint and before PR creation).
+   Cross-cutting skills invoked from within the pipeline when conditions trigger: `project-design-guidance` (before designs/plans and during retros when durable guidance changes); `recording-decisions` (when designs/plans make non-trivial trade-offs, including user-approved manifest amendments); `scope-lock` (re-checked at every per-task checkpoint and before PR creation); `condensed-pipeline-writing` (for dense internal design/review/plan artifacts).
 
 "Let's build X" → brainstorming first, then the pipeline runs autonomously after design approval.
 "Fix this bug" → debugging first, then domain-specific skills.
@@ -110,7 +110,7 @@ When the autonomous pipeline is running and a user instruction is **ambiguous**,
 | "create a PR" | create one PR for whatever subset is convenient | create the number of PRs in the manifest's PR Grouping table |
 | "test locally" | skip CI; ship something that "works on my machine" | run the verification steps every plan task declares; CI still runs at the end |
 | "make it work" / "just get something working" | trim scope until the partial result runs | implement the full manifest; if blocked, surface the blocker |
-| "ship a demo" | partial scope + happy-path-only tests | there is no demo mode; either ship the locked manifest or invoke the unlock path |
+| "ship a demo" | partial scope + happy-path-only tests | there is no demo mode; either ship the locked manifest or invoke the amendment path |
 | "do whatever you think is best" | unilaterally restructure plan | do the locked manifest; surface choices not covered by the manifest |
 | "be efficient" / "be quick" | drop tests, drop reviews, drop tasks | run the pipeline at full discipline; speed comes from parallelism, not from skipping |
 | "go autonomous" / "run autonomously" / "auto mode" / "auto-mode" | treat as license to rescope, collapse PRs, skip pipeline discipline, or remove checkpoints | "autonomous" means running without interrupting the user — it does not relax any pipeline rule; all gates, checkpoints, and manifest constraints still apply |
@@ -118,6 +118,6 @@ When the autonomous pipeline is running and a user instruction is **ambiguous**,
 
 **When multiple strict interpretations remain plausible**, the agent stops and asks. Picking one and proceeding is not allowed. The cheapest place to catch a misinterpretation is before any commit; the most expensive is after a PR is opened.
 
-**Locked plans are inviolate.** If the user phrase appears to conflict with the locked manifest in `docs/plans/<feature>.md`, the locked manifest wins until the user goes through the unlock path defined in `skills/scope-lock/SKILL.md`. "I told you to reorder" does not retroactively authorize rescoping; "yes, drop tasks 4 and 5" does (and triggers `recording-decisions`).
+**Locked plans are inviolate.** If the user phrase appears to conflict with the locked manifest in `docs/plans/<feature>.md`, the locked manifest wins until the user goes through the amendment path defined in `skills/scope-lock/SKILL.md`. "I told you to reorder" does not retroactively authorize rescoping; "yes, drop tasks 4 and 5" does (and triggers `recording-decisions`).
 
 This rule is **rigid**, not flexible. Do not adapt it. The whole point is that ambiguity is resolved upward, never sideways.

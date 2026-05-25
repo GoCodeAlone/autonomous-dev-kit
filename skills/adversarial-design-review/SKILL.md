@@ -3,6 +3,8 @@ name: adversarial-design-review
 description: Use after a design or implementation plan is drafted, before downstream skills accept it - adversarially attacks the ideas in the artifact (not just structural coverage) to surface unstated assumptions, repo-precedent conflicts, YAGNI violations, missing failure modes, security gaps, and simpler alternatives the author didn't consider
 ---
 
+> Condensed format: load `autodev:condensed-pipeline-writing` to expand shorthand.
+
 # Adversarial Design / Plan Review
 
 ## Overview
@@ -82,11 +84,14 @@ checklist is the floor, not the ceiling. Additional findings are welcome.
 
 | Class | Definition |
 |---|---|
-| **Unstated assumptions** | Load-bearing claims that aren't written down. "We assume the upstream API is idempotent." "We assume single-tenant." "We assume the user has admin." List them. Flag any where, if the assumption is wrong, the design collapses. |
+| **Project-guidance conflicts** | Read `docs/design-guidance.md` or equivalent project guidance. Does the artifact violate product direction, architecture constraints, UX/domain principles, quality/security/ops requirements, or non-goals? Cite both the guidance path/section and the conflicting design/plan section. If guidance is missing and the design does not show Q&A capture, flag it. |
+| **Assumptions under attack** | Load-bearing claims, stated or unstated. "We assume the upstream API is idempotent." "We assume single-tenant." "We assume the user has admin." Challenge each assumption, name how it could be false, and flag any where a false assumption collapses the design. |
 | **Repo-precedent conflicts** | Does this design fight existing patterns, skills, or conventions in this repo? Cite the conflicting `path/file.md:line`. If the design proposes a new pattern that contradicts an established one, the design must justify the divergence. |
 | **YAGNI violations** | Features in the design that aren't justified by stated requirements. Configuration knobs nobody asked for. Generality nobody needs. Future-proofing for cases that may never arrive. |
 | **Missing failure modes** | What fails first under partial failure, network partition, restart-mid-operation, malformed input, adversarial input, the dependency being down? If the design doesn't address it, flag it. |
-| **Security / privacy at architecture level** | Auth boundaries, secret flow, blast radius on compromise, PII exposure, log leakage, CSRF/SSRF/auth-confused-deputy at the design level (not at the code level — that's `requesting-code-review`'s job). |
+| **Security / privacy at architecture level** | Auth/authz boundaries, secret flow, least privilege, blast radius on compromise, PII exposure, log leakage, dependency/trust boundary, abuse case, CSRF/SSRF/auth-confused-deputy at the design level (not at the code level — that's `requesting-code-review`'s job). |
+| **Infrastructure impact** | Does the design create/change/destroy cloud resources, queues, storage, migrations, network exposure, secrets, IAM, scaling, cost, deploy order, or rollback requirements? If impact is absent or hand-waved, flag it. If production approval is required, it must be explicit. |
+| **Multi-component validation** | Does the design prove the real boundary works across components (API+DB, app+worker, frontend+backend, plugin+host, CLI+service, IaC+runtime)? Mock-only validation on both sides is insufficient unless justified. |
 | **Rollback story** | How do we undo this if it goes wrong in production? For any change class that runtime-launch-validation already triggers on (build/deployment/version pins/startup config/migrations/plugin loading), the design MUST specify a rollback path. If absent → finding. |
 | **Simpler alternative not considered** | Name the laziest plausible solution. Did the design consider it and reject it for stated reasons? If not → finding. "Couldn't this be a flat file?" "Couldn't this be a cron job?" "Couldn't this be a single SQL view?" |
 | **User-intent drift** | Re-read the original ask. Does the design solve what the user asked for, or does it solve a different problem that was easier to design for? Compare the design's stated goals against the user's stated goals; flag drift. |
@@ -102,6 +107,8 @@ inherits the design's blast radius) and adds:
 | **Verification-class mismatch** | For each task, does its verification step match its change class per the table in `skills/writing-plans/SKILL.md` ("Verification per change class")? A schema migration verified by unit tests = finding. An API endpoint with no curl invocation = finding. |
 | **Hidden serial dependencies** | Tasks the plan claims are independent but actually share state (same file, same DB row, same config key). If executed in parallel, they'll collide. Flag any such pair. |
 | **Missing rollback wiring** | The design specifies a rollback story (per the design-phase class above). Is it actually implemented in the plan as a task or step? Or is it a paragraph nobody is going to write code for? |
+| **Missing integration proof** | For multi-component changes, does the plan include an end-to-end or integration verification that exercises the real boundary? If it only tests each component with mocks, flag it unless the design explicitly justified that as sufficient. |
+| **Infrastructure verification mismatch** | For infrastructure-affecting changes, does the plan verify render/plan/apply/dry-run, secret wiring, migration order, rollback, and post-deploy health as appropriate? If not, flag it. |
 
 ## Process
 
@@ -115,14 +122,19 @@ inherits the design's blast radius) and adds:
 3. **Spot-check the repo for precedent conflicts.** Grep for related
    skills, similar designs in `docs/plans/`, established patterns. Cite
    what you find.
-4. **Run every bug-class check** in the relevant checklist. For each class,
+4. **Read project design guidance.** Invoke `autodev:project-design-guidance`
+   or read its canonical file (`docs/design-guidance.md`) if present. Guidance
+   conflicts are findings, not style preferences.
+5. **Run every bug-class check** in the relevant checklist. For each class,
    record one of:
    - **Finding** with file/section + severity (Critical / Important / Minor)
    - **Clean** with a one-sentence note on what you specifically checked
-5. **Surface options, not just objections.** For findings, propose a
+6. **Surface options, not just objections.** For findings, propose a
    concrete fix or alternative. "This design assumes X" → "Alternative: state
    X explicitly, and add a fallback if X is false at runtime."
-6. **Write the report.** Format below. Commit verdict: PASS / FAIL.
+7. **Write the report.** Format below. Commit verdict: PASS / FAIL.
+   Use `autodev:condensed-pipeline-writing` for report density unless the
+   user asked for prose.
 
 ## Report format
 
@@ -145,7 +157,8 @@ inherits the design's blast radius) and adds:
 **Bug-class scan transcript:**
 | Class | Result | Note |
 |---|---|---|
-| Unstated assumptions | Finding / Clean | <one sentence> |
+| Project-guidance conflicts | Finding / Clean | <one sentence> |
+| Assumptions under attack | Finding / Clean | <one sentence> |
 | Repo-precedent conflicts | Finding / Clean | <one sentence> |
 | ... | ... | ... |
 
@@ -166,18 +179,40 @@ list every class with a result, even if the result is Clean.
 - **FAIL** — one or more Critical findings, OR Important findings the
   author has not addressed.
 
+## Revision Loop
+
 On FAIL:
 
 - Feed findings back to the upstream skill (`brainstorming` for design
   phase, `writing-plans` for plan phase).
 - The upstream skill revises the artifact based on Critical and Important
   findings, then re-invokes adversarial review.
-- **Max 2 revision cycles** before escalating to the user with a summary of
-  unresolved findings. This mirrors the bound in
-  `skills/alignment-check/SKILL.md`.
+- Continue revision cycles while the review is finding tangible Critical or
+  Important issues: broken assumptions, missing failure handling, security
+  exposure, scope drift, verification gaps, rollback gaps, or concrete repo
+  precedent conflicts.
+- Stop the loop when remaining findings are only nitpicks: wording, formatting,
+  preference-level alternatives, harmless duplication, or low-confidence
+  concerns that do not change design/plan behavior. Record them as Minor and
+  PASS with the nitpicks listed.
+- If two consecutive cycles produce no new tangible Critical/Important issue
+  classes and only rephrase prior concerns, treat the loop as converged. Do not
+  keep cycling just to satisfy the "find at least three things wrong" framing.
 - The user may **override** a finding (mark it accepted with reasoning).
   Overrides are recorded in the artifact (e.g., "Reviewer flagged X as
   YAGNI; accepted because Y") so the decision is durable.
+
+## Backporting During Execution
+
+If implementation or verification later disproves a design assumption:
+
+1. Append a dated `Backport` note to the design doc using
+   `autodev:condensed-pipeline-writing`.
+2. State the failed assumption, evidence, and corrected design behavior.
+3. If the Scope Manifest is unchanged, no unlock is required; the lock protects
+   the manifest, not explanatory design text.
+4. If tasks, PR count, or shipped scope changes, use the `scope-lock` amendment
+   path before pushing or claiming completion.
 
 On PASS:
 
@@ -203,6 +238,7 @@ Agent tool (general-purpose, model: balanced):
     Read these files:
     - <design-doc-path>
     - <plan-doc-path>  (only for --phase=plan)
+    - docs/design-guidance.md or equivalent project guidance, if present
     - The original user ask (paste it inline below).
 
     USER ASK (verbatim):
@@ -235,9 +271,10 @@ Agent tool (general-purpose, model: balanced):
 
 <host: codex, opencode, cursor>
 Run the adversarial review inline: read the design (and plan, if
-`--phase=plan`), perform every bug-class scan in the checklist, and produce
-the Report format above. The framing requirements still apply — adversarial
-mindset, ≥3 findings or full transcript, no reflexive approval.
+`--phase=plan`) plus `docs/design-guidance.md` or equivalent project guidance,
+perform every bug-class scan in the checklist, and produce the Report format
+above. The framing requirements still apply — adversarial mindset, ≥3 findings
+or full transcript, no reflexive approval.
 </host>
 
 ## Integration

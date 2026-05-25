@@ -1,8 +1,8 @@
 # Cross-LLM Portability Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For Claude:** REQUIRED SUB-SKILL: Use autodev:executing-plans to implement this plan task-by-task.
 
-**Goal:** Make the 17 superpowers skills first-class on Claude Code, Codex, OpenCode, and Cursor by replacing brand-specific tool names + model tiers with host-conditional sections + a role-based vocabulary, with a CI guard against regression.
+**Goal:** Make the 17 autodev skills first-class on Claude Code, Codex, OpenCode, and Cursor by replacing brand-specific tool names + model tiers with host-conditional sections + a role-based vocabulary, with a CI guard against regression.
 
 **Architecture:** Single-source skills on disk. Inline `<host: …>` markers gate host-specific paragraphs. Model tiers expressed by role (`fast` / `balanced` / `frontier` / `coding-specialist`) and resolved through `agents/model-tiers.md`. Workflow patterns with no cross-host equivalent (Agent Teams, shared task list, EnterPlanMode) get explicit fallbacks. A grep guard keeps Claude-only tokens out of host-neutral text.
 
@@ -14,7 +14,7 @@
 
 **Design-only mode is active** (orchestrator passed `--design-only`).
 
-After alignment-check PASS, **STOP**. Do not invoke `superpowers:subagent-driven-development`. The plan + design sit in `docs/plans/` for the team's persistent implementer agents to execute.
+After alignment-check PASS, **STOP**. Do not invoke `autodev:subagent-driven-development`. The plan + design sit in `docs/plans/` for the team's persistent implementer agents to execute.
 
 ## Reading order for the implementer
 
@@ -50,7 +50,7 @@ The plan is grouped so an orchestrator can dispatch each group as a self-contain
 |---|---|---|---|
 | A. Infrastructure | 1, 2, 3 | small | PR-A: shared infra (model tiers + grep guard + writing-skills marker convention) |
 | B. Group II rewrites | 4, 5, 6, 7, 8 | small × 5 | PR-B: moderate-bleed skills (alignment-check, pr-monitoring, receiving-code-review, finishing-a-development-branch, brainstorming) |
-| C. Group III rewrites | 9, 10, 11, 12, 13, 14 | medium × 6 | PR-C: heavy-bleed skills (subagent-driven-development, dispatching-parallel-agents, writing-plans, using-superpowers, executing-plans, writing-skills extension) |
+| C. Group III rewrites | 9, 10, 11, 12, 13, 14 | medium × 6 | PR-C: heavy-bleed skills (subagent-driven-development, dispatching-parallel-agents, writing-plans, using-autodev, executing-plans, writing-skills extension) |
 | D. Documentation | 15, 15b, 15c, 16, 17 | small | PR-D: README + INSTALL.md updates |
 | E. Coverage table | 18 | small | PR-E: tests/cross-llm-coverage.md |
 
@@ -774,10 +774,10 @@ git commit -m "skill(writing-plans): host-conditional plan mode + role tiers"
 
 ---
 
-## Task 12: Rewrite `using-superpowers` (entry-point skill — important)
+## Task 12: Rewrite `using-autodev` (entry-point skill — important)
 
 **Files:**
-- Modify: `skills/using-superpowers/SKILL.md`
+- Modify: `skills/using-autodev/SKILL.md`
 
 **Bleed:** mentions `Skill` tool; mentions `TodoWrite`; entire file structure assumes Claude tooling.
 
@@ -838,7 +838,7 @@ Restructure the surrounding paragraph so the rule "create one tracking entry per
 **Step 4: Grep-clean**
 
 ```bash
-guard_out="$(./tests/skill-content-grep.sh 2>&1)"; printf '%s\n' "$guard_out" | grep using-superpowers || true
+guard_out="$(./tests/skill-content-grep.sh 2>&1)"; printf '%s\n' "$guard_out" | grep using-autodev || true
 ```
 
 Expect no matches.
@@ -846,8 +846,8 @@ Expect no matches.
 **Step 5: Commit**
 
 ```bash
-git add skills/using-superpowers/SKILL.md
-git commit -m "skill(using-superpowers): host-aware skill access + checklist tool"
+git add skills/using-autodev/SKILL.md
+git commit -m "skill(using-autodev): host-aware skill access + checklist tool"
 ```
 
 **Verification class:** Skill content.
@@ -959,9 +959,9 @@ apply only to the named host(s); unmarked content applies to every host.
 
 | Host | Install path | Native skill discovery | Notes |
 |---|---|---|---|
-| Claude Code | `~/.claude/plugins/marketplace/superpowers/` | yes | Full Agent Teams support (experimental flag) |
-| Codex | `~/.agents/skills/superpowers/` | yes | Sequential sub-agent dispatch; `/plan` slash; `/agent` switching |
-| OpenCode | `~/.config/opencode/skills/superpowers/` | yes | Tool mapping documented in `.opencode/INSTALL.md` |
+| Claude Code | `~/.claude/plugins/marketplace/autodev/` | yes | Full Agent Teams support (experimental flag) |
+| Codex | `~/.agents/skills/autodev/` | yes | Sequential sub-agent dispatch; `/plan` slash; `/agent` switching |
+| OpenCode | `~/.config/opencode/skills/autodev/` | yes | Tool mapping documented in `.opencode/INSTALL.md` |
 | Cursor | manual reference | partial | Plugin manifest stub; install path TBD |
 
 See `agents/model-tiers.md` for the role-based model vocabulary used across
@@ -1197,7 +1197,7 @@ host-neutral. Updated whenever a skill changes.
 | systematic-debugging | host-neutral | host-neutral | host-neutral | host-neutral | already portable |
 | test-driven-development | host-neutral | host-neutral | host-neutral | host-neutral | already portable |
 | using-git-worktrees | host-neutral | host-neutral | host-neutral | host-neutral | already portable |
-| using-superpowers | host-conditional | host-conditional | host-conditional | host-conditional | entry-point host detection |
+| using-autodev | host-conditional | host-conditional | host-conditional | host-conditional | entry-point host detection |
 | verification-before-completion | host-neutral | host-neutral | host-neutral | host-neutral | already portable |
 | writing-plans | host-conditional | host-conditional | host-conditional | host-conditional | plan-mode block + role tiers |
 | writing-skills | host-conditional | host-conditional | host-conditional | host-conditional | marker convention |
@@ -1248,6 +1248,6 @@ After alignment-check PASS:
 
 1. Save the plan ✅ (this document).
 2. Commit the plan.
-3. Invoke `superpowers:alignment-check`.
-4. **On PASS: STOP.** Do NOT invoke `superpowers:subagent-driven-development`. Return summary to orchestrator.
+3. Invoke `autodev:alignment-check`.
+4. **On PASS: STOP.** Do NOT invoke `autodev:subagent-driven-development`. Return summary to orchestrator.
 5. **On FAIL:** revise based on drift items; re-run alignment-check (max 2 cycles); STOP regardless.

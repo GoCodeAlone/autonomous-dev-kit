@@ -1,4 +1,4 @@
-# Superpowers Skills Improvements — Design
+# Autonomous Dev Kit Skills Improvements — Design
 
 **Status:** Approved by user; full execution pipeline will run.
 **Branch:** `feat/skills-improvements-from-failure-modes`
@@ -10,7 +10,7 @@ Multi-agent autonomous development sessions over recent weeks revealed ten failu
 
 The driving observation: a third-party adversarial code reviewer running on a fresh diff read consistently catches bugs that the team's own reviewer agent has already approved — same base LLM, same diff, very different outcomes. The framing differs, the brief differs, the loop differs, and the result differs by order of magnitude. Closing that gap is the single highest-impact change in this design.
 
-This work targets the public `claude-superpowers` skill set. **All changes are generic** — no project, company, technology, or incident references bleed in. Lessons abstract; specifics scrub.
+This work targets the public `autonomous-dev-kit` skill set. **All changes are generic** — no project, company, technology, or incident references bleed in. Lessons abstract; specifics scrub.
 
 ## Goals
 
@@ -329,4 +329,4 @@ The implementer will create these fixtures as part of the work and document the 
 
 ## Approval
 
-Approved by user via the autonomous-mode brainstorm dispatch with full pipeline (brainstorm → writing-plans → alignment-check → subagent-driven-development → finishing → pr-monitoring). Implementer: per the orchestrator's team configuration. PR(s) targeted at `GoCodeAlone/claude-superpowers` main with newly-active branch protection.
+Approved by user via the autonomous-mode brainstorm dispatch with full pipeline (brainstorm → writing-plans → alignment-check → subagent-driven-development → finishing → pr-monitoring). Implementer: per the orchestrator's team configuration. PR(s) targeted at `GoCodeAlone/autonomous-dev-kit` main with newly-active branch protection.

@@ -3,6 +3,8 @@ name: pr-monitoring
 description: Use after creating a PR to automatically monitor CI checks and review comments, fixing issues and pushing updates autonomously
 ---
 
+> Condensed format: load `autodev:condensed-pipeline-writing` to expand shorthand.
+
 # PR Monitoring
 
 ## Overview
@@ -191,7 +193,7 @@ Agent tool (general-purpose, model: balanced, run_in_background: true):
     **On all PRs complete (clean exit):**
     - For each PR that is merged AND whose base-branch CI is green for the merge
       commit AND that has a design + plan in `docs/plans/` for its branch, invoke
-      `superpowers:post-merge-retrospective` to produce a retro in `docs/retros/`.
+      `autodev:post-merge-retrospective` to produce a retro in `docs/retros/`.
     - Report final status.
 
     **On session timeout (60-minute limit reached):**
@@ -205,7 +207,7 @@ Agent tool (general-purpose, model: balanced, run_in_background: true):
       - PR #<n> <url>: <one-line summary of remaining work>
     PRs complete:
       - PR #<n> <url>: all checks green, no open threads
-    Action required: restart superpowers:pr-monitoring for the PRs listed above.
+    Action required: restart autodev:pr-monitoring for the PRs listed above.
     ```
 
     Then exit. The orchestrator (lead agent) will read this report via the
@@ -238,7 +240,7 @@ status report listing which PRs still need attention, then exit. The orchestrato
 should start a new monitor for the remaining PRs.
 
 When a PR has merged with green base-branch CI and a design + plan exist in
-`docs/plans/` for its branch, invoke `superpowers:post-merge-retrospective` to
+`docs/plans/` for its branch, invoke `autodev:post-merge-retrospective` to
 write a retro in `docs/retros/`. If the PR was closed without merge, skip the
 retro and exit cleanly.
 
@@ -259,7 +261,7 @@ retro and exit cleanly.
 
 When the monitor agent times out (60 min), it writes a `PR-MONITOR TIMEOUT REPORT`
 to its output. The orchestrator (lead agent) should watch for this via the activity
-log, read the report, and start a new `superpowers:pr-monitoring` agent scoped to
+log, read the report, and start a new `autodev:pr-monitoring` agent scoped to
 only the PRs still listed as needing attention. Repeat until all PRs are clean.
 
 ## Integration
@@ -268,8 +270,8 @@ only the PRs still listed as needing attention. Repeat until all PRs are clean.
 - `finishing-a-development-branch` (autonomous mode) — after PR creation
 
 **Calls:**
-- `superpowers:post-merge-retrospective` — on its own clean exit when the PR has merged with green base-branch CI
+- `autodev:post-merge-retrospective` — on its own clean exit when the PR has merged with green base-branch CI
 
 **Uses:**
 - `gh` CLI for all GitHub operations
-- `superpowers:systematic-debugging` principles for CI failure analysis
+- `autodev:systematic-debugging` principles for CI failure analysis

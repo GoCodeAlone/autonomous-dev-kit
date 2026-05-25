@@ -29,17 +29,6 @@ cmd=$(printf '%s' "$hook_input" | jq -r '.tool_input.command // empty' 2>/dev/nu
 # Only act on PR creation commands.
 printf '%s' "$cmd" | grep -q 'gh pr create' || exit 0
 
-# Escape a string for embedding inside a JSON string value.
-escape_for_json() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\"/\\\"}"
-    s="${s//$'\n'/\\n}"
-    s="${s//$'\r'/\\r}"
-    s="${s//$'\t'/\\t}"
-    printf '%s' "$s"
-}
-
 reminder=$(cat <<'REMINDER'
 <IMPORTANT>
 Before and after running `gh pr create`:
@@ -54,8 +43,13 @@ Before and after running `gh pr create`:
 REMINDER
 )
 
-escaped=$(escape_for_json "$reminder")
+emit_additional_context() {
+    local event_name="$1"
+    local context="$2"
+    jq -n --arg event "$event_name" --arg context "$context" \
+        '{hookSpecificOutput:{hookEventName:$event,additionalContext:$context}}'
+}
 
-printf '{"additional_context":"%s"}\n' "$escaped"
+emit_additional_context "PreToolUse" "$reminder"
 
 exit 0

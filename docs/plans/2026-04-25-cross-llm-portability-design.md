@@ -1,6 +1,6 @@
 # Cross-LLM Portability Design
 
-**Goal:** Make the superpowers skills repo first-class on Claude Code, Codex, OpenCode, and Cursor without forking content per host.
+**Goal:** Make the autodev skills repo first-class on Claude Code, Codex, OpenCode, and Cursor without forking content per host.
 
 **Status:** Design only. Implementation will be queued to a separate plan and dispatched to implementer agents.
 
@@ -10,14 +10,14 @@
 
 ## Problem
 
-The superpowers repo currently ships installers for four hosts (Claude Code, Codex, OpenCode, Cursor) but the skill bodies are heavily Claude-specific. An audit of the 17 skills found:
+The autodev repo currently ships installers for four hosts (Claude Code, Codex, OpenCode, Cursor) but the skill bodies are heavily Claude-specific. An audit of the 17 skills found:
 
 - 11 of 17 skills (65%) reference Claude-only tool names: `TodoWrite`, `TaskCreate`, `TaskList`, `TeamCreate`, `SendMessage`, `Agent`, `Monitor`.
 - 8 of 17 reference Claude model tier names (`Sonnet`, `Opus`, `Haiku`) that have no analogue in other hosts.
 - Several skills assume Claude-specific UX features such as the `EnterPlanMode` tool / `Shift+Tab` gesture.
 - One skill (`subagent-driven-development`) is built around a Claude experimental feature (Agent Teams + persistent named teammates + cross-agent chat) that has **no equivalent on any other host**.
 
-The Codex install plumbing already symlinks `~/.agents/skills/superpowers` — which is exactly the path Codex documents for user-scope skill discovery. The plumbing is correct; **the bleed is in the content**.
+The Codex install plumbing already symlinks `~/.agents/skills/autodev` — which is exactly the path Codex documents for user-scope skill discovery. The plumbing is correct; **the bleed is in the content**.
 
 A non-Claude user installing these skills will read prose that references tools their host does not expose, model names their host does not understand, and gestures that don't exist. Skills with this content cannot reliably trigger their intended behavior on a non-Claude host.
 
@@ -28,7 +28,7 @@ A non-Claude user installing these skills will read prose that references tools 
 - The existing install model (clone + symlink, `git pull` for updates) must keep working. No installer-time forking of skill content.
 - Skills must remain a **single source of truth** on disk. Every host reads the same files.
 - Frontmatter must remain `name` + `description` only. SKILL.md frontmatter is constrained to those two fields by Claude's spec; Codex follows the same convention. Adding new top-level fields breaks Claude's loader.
-- Existing user-facing skill names (e.g. `superpowers:brainstorming`) must remain stable. No renames.
+- Existing user-facing skill names (e.g. `autodev:brainstorming`) must remain stable. No renames.
 - Branch protection on `main` is active; every change is a PR, no direct push.
 - This repo is public — all content remains free of internal-project / company / version / incident references.
 
@@ -83,7 +83,7 @@ The host context is established by a small preamble in each host's entry point f
 
 **Cons:**
 - Skill bodies grow somewhat (each conditional adds prose).
-- Model has to read the right host section. Mitigated by (a) tagging sections with explicit `<host:claude>`-style markers, (b) putting the host-detection rule prominently in `using-superpowers`.
+- Model has to read the right host section. Mitigated by (a) tagging sections with explicit `<host:claude>`-style markers, (b) putting the host-detection rule prominently in `using-autodev`.
 - Requires discipline: every author touching a skill must keep all host paths in sync.
 
 ### Option C — top-level "tool alias" registry file
@@ -191,11 +191,11 @@ This is precisely the "Legacy Mode (Sequential Subagents)" path already document
 
 #### 4.2 Shared task list (TodoWrite / TaskCreate)
 
-Used in `executing-plans`, `subagent-driven-development`, `using-superpowers`. Claude has `TodoWrite` (single-agent) and `TaskCreate` (Agent Teams shared list). OpenCode has `update_plan`. Codex and Cursor have no built-in.
+Used in `executing-plans`, `subagent-driven-development`, `using-autodev`. Claude has `TodoWrite` (single-agent) and `TaskCreate` (Agent Teams shared list). OpenCode has `update_plan`. Codex and Cursor have no built-in.
 
 **Fallback for hosts without a task-list tool:** in-prose checklist in the conversation transcript. The orchestrator maintains a markdown checklist in chat output; sub-agents are passed a copy. Less ergonomic than a real task tool but functionally equivalent for a single session.
 
-We document this fallback once in `using-superpowers` and reference it from the skills that depend on the pattern.
+We document this fallback once in `using-autodev` and reference it from the skills that depend on the pattern.
 
 #### 4.3 Plan Mode (`EnterPlanMode` + Shift-Tab)
 
@@ -251,7 +251,7 @@ Estimated: 5–15 line diff per skill.
 - `subagent-driven-development` — heaviest; rewritten around Sequential Mode default with Agent Teams as Claude-only addendum.
 - `dispatching-parallel-agents` — `Task("…")` examples need host-conditional rewrite.
 - `writing-plans` — Plan Mode logic gets host-conditional update; Sonnet/Opus/Haiku → role names.
-- `using-superpowers` — Skill tool references already host-conditional; add explicit host-detection pointer + task-list fallback.
+- `using-autodev` — Skill tool references already host-conditional; add explicit host-detection pointer + task-list fallback.
 - `executing-plans` — `TodoWrite` references → "shared task list" + fallback.
 - `writing-skills` — already mentions `~/.agents/skills/` for Codex; expand with host-conditional rewrite + the alias-marker convention.
 
@@ -283,7 +283,7 @@ This pairs the documentation discipline with a mechanical guard against regressi
 **Risk: model ignores the host marker and reads the wrong section.**
 
 Mitigation:
-- The marker convention is documented in `using-superpowers` (the entry-point skill the model loads first).
+- The marker convention is documented in `using-autodev` (the entry-point skill the model loads first).
 - Skills include short explicit cues like "On Codex, do X." inside the conditional block, so even a model that under-weighs the marker tends to do the right thing.
 - The `tests/skill-content-grep.sh` guard catches the common error of authoring host-specific content outside a marker.
 
@@ -339,4 +339,4 @@ The following questions were open at design time and have since been resolved:
 
 ## Next step
 
-Hand off to `superpowers:writing-plans` in `--design-only` mode. The plan will halt at alignment-check PASS for orchestrator review; implementation will be dispatched separately.
+Hand off to `autodev:writing-plans` in `--design-only` mode. The plan will halt at alignment-check PASS for orchestrator review; implementation will be dispatched separately.

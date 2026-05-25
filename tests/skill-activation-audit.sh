@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/skill-activation-audit.sh
-# Reads .claude/superpowers-state/in-progress.jsonl and reports which
-# superpowers skills / agents fired during the recorded session(s),
+# Reads .claude/autodev-state/in-progress.jsonl and reports which
+# autodev skills / agents fired during the recorded session(s),
 # plus a heuristic check for "expected but not invoked" pipeline gates.
 #
 # This is strictly local — it never transmits anything off the machine.
@@ -52,9 +52,9 @@ for arg in "$@"; do
   esac
 done
 
-# Default: look up from CWD into .claude/superpowers-state/in-progress.jsonl
+# Default: look up from CWD into .claude/autodev-state/in-progress.jsonl
 if [ -z "$STATE_FILE" ]; then
-  STATE_FILE="${PWD}/.claude/superpowers-state/in-progress.jsonl"
+  STATE_FILE="${PWD}/.claude/autodev-state/in-progress.jsonl"
 fi
 
 if [ ! -r "$STATE_FILE" ]; then
@@ -67,7 +67,7 @@ if [ ! -r "$STATE_FILE" ]; then
 fi
 
 # Pipeline gates we expect for an autonomous run, in order. The pipeline
-# is the canonical chain documented in skills/using-superpowers/SKILL.md:
+# is the canonical chain documented in skills/using-autodev/SKILL.md:
 #   brainstorming → adversarial-design-review (design) → writing-plans →
 #   adversarial-design-review (plan) → alignment-check → scope-lock →
 #   subagent-driven-development → finishing-a-development-branch →
@@ -102,30 +102,32 @@ OPTIONAL_GATES=(
 
 # --- Parse JSONL ----------------------------------------------------------
 
-# Each line is {"ts":"...","tool":"...","detail":"skill=foo args=..."} or
-# {"ts":"...","tool":"Agent","detail":"agent=... desc=\"...\" bg=..."}.
+# New rows are compressed: {"ts":"...","ev":"skill","sk":"foo"} or
+# {"ts":"...","ev":"agent","ag":"general-purpose"}. Legacy rows used
+# {"tool":"...","detail":"skill=foo ..."}; keep reading both during migration.
 # We tolerate jq missing — fall back to grep if jq isn't installed.
 
 extract_skills() {
   if command -v jq >/dev/null 2>&1; then
-    # detail is a free-form string; pull `skill=<name>` from it.
-    jq -r 'select(.tool=="Skill") | .detail' "$STATE_FILE" 2>/dev/null \
-      | sed -nE 's/.*skill=([A-Za-z0-9_:-]+).*/\1/p' \
-      | sed -E 's/^superpowers://'
+    jq -r 'if (.ev // "") == "skill" then (.sk // "") elif (.tool // "") == "Skill" then (.detail // "") else empty end' "$STATE_FILE" 2>/dev/null \
+      | awk 'NF {print}' \
+      | sed -nE '/^skill=/ s/.*skill=([A-Za-z0-9_:-]+).*/\1/p; /^[A-Za-z0-9_:-]+$/ p' \
+      | sed -E 's/^autodev://'
   else
-    grep -E '"tool":"Skill"' "$STATE_FILE" 2>/dev/null \
-      | sed -nE 's/.*skill=([A-Za-z0-9_:-]+).*/\1/p' \
-      | sed -E 's/^superpowers://'
+    grep -E '"ev":"skill"|"tool":"Skill"' "$STATE_FILE" 2>/dev/null \
+      | sed -nE 's/.*"sk":"([^"]+)".*/\1/p; s/.*skill=([A-Za-z0-9_:-]+).*/\1/p' \
+      | sed -E 's/^autodev://'
   fi
 }
 
 extract_agents() {
   if command -v jq >/dev/null 2>&1; then
-    jq -r 'select(.tool=="Agent" or (.tool | type=="string" and startswith("Task"))) | .detail' "$STATE_FILE" 2>/dev/null \
-      | sed -nE 's/.*agent=([A-Za-z0-9_-]+).*/\1/p'
+    jq -r 'if (.ev // "") == "agent" then (.ag // "") elif (.ev // "") == "task" then (.ag // "") elif (.tool=="Agent" or ((.tool // "") | startswith("Task"))) then (.detail // "") else empty end' "$STATE_FILE" 2>/dev/null \
+      | awk 'NF {print}' \
+      | sed -nE '/^agent=/ s/.*agent=([A-Za-z0-9_-]+).*/\1/p; /^[A-Za-z0-9_-]+$/ p'
   else
-    grep -E '"tool":"(Agent|Task[^"]*)"' "$STATE_FILE" 2>/dev/null \
-      | sed -nE 's/.*agent=([A-Za-z0-9_-]+).*/\1/p'
+    grep -E '"ev":"(agent|task)"|"tool":"(Agent|Task[^"]*)"' "$STATE_FILE" 2>/dev/null \
+      | sed -nE 's/.*"ag":"([^"]+)".*/\1/p; s/.*agent=([A-Za-z0-9_-]+).*/\1/p'
   fi
 }
 

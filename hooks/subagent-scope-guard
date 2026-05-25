@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # hooks/subagent-scope-guard
-# SubagentStop hook: checks that a subagent did not modify protected files
-# (*.scope-lock, locked docs/plans/*.md) as part of its work.
+# SubagentStop hook: checks that a subagent did not modify .scope-lock files
+# or drift a locked Scope Manifest as part of its work.
 #
 # A subagent should never write scope-lock files directly (only alignment-check
-# via the scope-lock skill does that) and should never edit a locked plan file
-# (only the unlock path does that). If either is detected the subagent's stop
-# is blocked so the lead agent is alerted before the subagent's changes are
-# accepted.
+# via the scope-lock skill does that). Locked plan/design markdown may be
+# backported, but the Scope Manifest hash must still verify. If either protected
+# invariant is violated, the subagent's stop is blocked so the lead agent is
+# alerted before the subagent's changes are accepted.
 #
 # Honoured stop_hook_active flag to avoid infinite loops — the guard fires once.
 #
@@ -55,16 +55,7 @@ if command -v git >/dev/null 2>&1; then
             done <<< "$scope_lock_dirty"
         fi
 
-        # Uncommitted changes to docs/plans/*.md
-        plan_dirty=$(git status --porcelain 2>/dev/null \
-            | awk '{print $2}' | grep '^docs/plans/.*\.md$' | grep -v '\.scope-lock' || true)
-        if [ -n "$plan_dirty" ]; then
-            while IFS= read -r f; do
-                violations="${violations}  • Uncommitted change to plan file: ${f}\n"
-            done <<< "$plan_dirty"
-        fi
-
-        # Last commit: did it touch scope-lock or locked plan files?
+        # Last commit: did it touch scope-lock files?
         if git rev-parse --verify HEAD >/dev/null 2>&1; then
             last_commit_files=$(git diff-tree --no-commit-id -r --name-only HEAD 2>/dev/null || true)
 
@@ -75,16 +66,20 @@ if command -v git >/dev/null 2>&1; then
                 done <<< "$lock_in_commit"
             fi
 
-            plans_in_commit=$(printf '%s' "$last_commit_files" \
-                | grep '^docs/plans/.*\.md$' | grep -v '\.scope-lock' || true)
-            if [ -n "$plans_in_commit" ]; then
-                while IFS= read -r f; do
-                    # Only flag if the plan is currently Locked
-                    if [ -f "$f" ] && grep -q '\*\*Status:\*\* Locked' "$f" 2>/dev/null; then
-                        violations="${violations}  • Last commit modified a Locked plan file: ${f}\n"
-                    fi
-                done <<< "$plans_in_commit"
-            fi
+        fi
+
+        # Locked plan files may be edited for design backports or notes, but
+        # their Scope Manifest hash must still match the lock file.
+        checker="${cwd_dir}/tests/plan-scope-check.sh"
+        if [ -x "$checker" ] && [ -d "${cwd_dir}/docs/plans" ]; then
+            locked_plans=$(grep -rl '\*\*Status:\*\* Locked' "${cwd_dir}/docs/plans" 2>/dev/null \
+                | grep '\.md$' | grep -v '\.scope-lock' || true)
+            while IFS= read -r plan; do
+                [ -z "$plan" ] && continue
+                if ! bash "$checker" --verify-lock "$plan" >/dev/null 2>&1; then
+                    violations="${violations}  • Locked Scope Manifest hash mismatch: ${plan#${cwd_dir}/}\n"
+                fi
+            done <<< "$locked_plans"
         fi
 
         cd "$_saved_pwd"
@@ -96,13 +91,14 @@ fi
 block "Subagent stop blocked — protected files were modified:
 
 ${violations}
-Subagents must not write .scope-lock files or edit Locked plan files directly.
-These files are controlled exclusively by the scope-lock skill via the unlock path.
+Subagents must not write .scope-lock files or change a Locked Scope Manifest
+without the amendment path. Non-manifest design backports are allowed if the
+manifest hash still verifies.
 
 Before this subagent's changes are accepted:
-  1. Revert the protected-file changes (git checkout -- <file>).
-  2. If a scope change is genuinely needed, surface it to the lead agent and
-     go through the unlock path: recording-decisions → update manifest →
+  1. Revert unauthorized .scope-lock or manifest changes.
+  2. If a manifest change is genuinely needed, surface it to the lead agent and
+     go through the amendment path: recording-decisions → update manifest →
      re-run alignment-check.
 
-See skills/scope-lock/SKILL.md for the unlock path."
+See skills/scope-lock/SKILL.md for the amendment path."

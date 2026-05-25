@@ -1,6 +1,6 @@
 # Alignment, Autonomy & Agent Teams Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For Claude:** REQUIRED SUB-SKILL: Use autodev:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add design-to-plan alignment verification, Agent Teams as the default execution mode, and full autonomy after design approval with automated PR monitoring.
 
@@ -252,7 +252,7 @@ Agent tool (general-purpose, model: sonnet, run_in_background: true):
 
 **Uses:**
 - `gh` CLI for all GitHub operations
-- `superpowers:systematic-debugging` principles for CI failure analysis
+- `autodev:systematic-debugging` principles for CI failure analysis
 ```
 
 **Step 2: Verify the file was created correctly**
@@ -428,8 +428,8 @@ When running autonomously (design already approved, no user interaction):
 
 1. Save the plan to `docs/plans/<filename>.md`
 2. Commit the plan
-3. Invoke `superpowers:alignment-check` to verify design-to-plan alignment
-4. On PASS: invoke `superpowers:subagent-driven-development` (which uses Agent Teams when available)
+3. Invoke `autodev:alignment-check` to verify design-to-plan alignment
+4. On PASS: invoke `autodev:subagent-driven-development` (which uses Agent Teams when available)
 5. Do NOT ask the user for execution choice — the pipeline is autonomous
 
 ### Manual Mode (direct invocation)
@@ -445,13 +445,13 @@ When invoked directly by the user (not from brainstorming pipeline):
 **Which approach?"**
 
 **If Subagent-Driven chosen:**
-- **REQUIRED SUB-SKILL:** Use superpowers:subagent-driven-development
+- **REQUIRED SUB-SKILL:** Use autodev:subagent-driven-development
 - Stay in this session
 - Fresh subagent per task + code review
 
 **If Parallel Session chosen:**
 - Guide them to open new session in worktree
-- **REQUIRED SUB-SKILL:** New session uses superpowers:executing-plans
+- **REQUIRED SUB-SKILL:** New session uses autodev:executing-plans
 ```
 
 **Step 2: Review the full modified file**
@@ -692,7 +692,7 @@ Wait for all shutdown approvals, then:
 TeamDelete()
 ```
 
-Invoke `superpowers:finishing-a-development-branch`.
+Invoke `autodev:finishing-a-development-branch`.
 
 ## Legacy Mode (Sequential Subagents)
 
@@ -732,16 +732,16 @@ When Agent Teams is not available, fall back to the original sequential flow:
 ## Integration
 
 **Required workflow skills:**
-- **superpowers:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
-- **superpowers:writing-plans** - Creates the plan this skill executes
-- **superpowers:alignment-check** - Verifies plan matches design (autonomous mode)
-- **superpowers:finishing-a-development-branch** - Complete development after all tasks
+- **autodev:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
+- **autodev:writing-plans** - Creates the plan this skill executes
+- **autodev:alignment-check** - Verifies plan matches design (autonomous mode)
+- **autodev:finishing-a-development-branch** - Complete development after all tasks
 
 **Subagents/teammates should use:**
-- **superpowers:test-driven-development** - Follow TDD for each task
+- **autodev:test-driven-development** - Follow TDD for each task
 
 **Alternative workflow:**
-- **superpowers:executing-plans** - Use for parallel session instead of same-session execution
+- **autodev:executing-plans** - Use for parallel session instead of same-session execution
 ```
 
 **Step 2: Update implementer-prompt.md with team messaging**
@@ -864,7 +864,7 @@ Replace the existing Integration section (lines 195-201) with:
 - **executing-plans** (Step 5) - After all batches complete
 
 **Calls (autonomous mode):**
-- **superpowers:pr-monitoring** - After PR creation, monitors CI and reviews
+- **autodev:pr-monitoring** - After PR creation, monitors CI and reviews
 
 **Pairs with:**
 - **using-git-worktrees** - Cleans up worktree created by that skill
@@ -879,14 +879,14 @@ git commit -m "feat: finishing-a-development-branch autonomous PR creation and m
 
 ---
 
-### Task 7: Modify `using-superpowers` Skill — Update Workflow & Skills List
+### Task 7: Modify `using-autodev` Skill — Update Workflow & Skills List
 
 **Files:**
-- Modify: `skills/using-superpowers/SKILL.md`
+- Modify: `skills/using-autodev/SKILL.md`
 
 **Step 1: Add new skills to the skill priority section**
 
-In `skills/using-superpowers/SKILL.md`, update the "Skill Priority" section (after line 79) to include the new skills. Replace:
+In `skills/using-autodev/SKILL.md`, update the "Skill Priority" section (after line 79) to include the new skills. Replace:
 
 ```
 ## Skill Priority
@@ -919,8 +919,8 @@ When multiple skills could apply, use this order:
 **Step 2: Commit**
 
 ```bash
-git add skills/using-superpowers/SKILL.md
-git commit -m "feat: using-superpowers updated with autonomous pipeline skills"
+git add skills/using-autodev/SKILL.md
+git commit -m "feat: using-autodev updated with autonomous pipeline skills"
 ```
 
 ---

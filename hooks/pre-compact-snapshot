@@ -2,13 +2,13 @@
 # hooks/pre-compact-snapshot
 # PreCompact hook: snapshots the current lock state before a context compaction.
 #
-# Writes each locked plan's name and manifest hash to the superpowers-state
+# Writes each locked plan's name and manifest hash to the autodev-state
 # file so that the SessionStart hook can detect lock-state changes after the
 # compacted context is restored (e.g., if a plan was locked or unlocked during
 # a long session and then the context was compacted, the resumption context will
 # include the lock state so the agent does not re-derive intent).
 #
-# Also injects the snapshot as additional_context so the compacted transcript
+# Also injects the snapshot as hookSpecificOutput.additionalContext so the compacted transcript
 # itself retains the lock state.
 #
 # Global opt-out: set SUPERPOWERS_HOOKS_DISABLE=1
@@ -46,7 +46,20 @@ if [ -d "$plans_dir" ]; then
             manifest_hash=$(awk 'NF && !/^#/ {print; exit}' "$lock_file" 2>/dev/null || true)
             state_section="${state_section}  ${plan_name}: ${status_line} (manifest-sha256: ${manifest_hash:-unknown})\n"
         else
+            manifest_hash=""
             state_section="${state_section}  ${plan_name}: ${status_line} (no lock file — not yet locked or lock file missing)\n"
+        fi
+
+        ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        entry=$(jq -nc \
+            --arg ts "$ts" \
+            --arg pl "$plan_name" \
+            --arg st "$status_line" \
+            --arg h "$manifest_hash" \
+            '{ts:$ts,ev:"lock",pl:$pl,st:$st} + (if $h != "" then {h:$h} else {} end)' 2>/dev/null || true)
+        if [ -n "$entry" ]; then
+            pending_entries="${pending_entries:-}${entry}
+"
         fi
     done < <(find "$plans_dir" -maxdepth 1 -name '*.md' \
         ! -name '*-design.md' ! -name 'README.md' 2>/dev/null \
@@ -58,43 +71,33 @@ if [ -z "$state_section" ]; then
     exit 0
 fi
 
-# ── Append to superpowers-state file ─────────────────────────────────────────
-STATE_DIR="${cwd_dir}/.claude/superpowers-state"
+# ── Append to autodev-state file ─────────────────────────────────────────
+STATE_DIR="${cwd_dir}/.claude/autodev-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 STATE_FILE="${STATE_DIR}/in-progress.jsonl"
 LOCK_FILE="${STATE_DIR}/.in-progress.lock"
 
 ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-entry=$(jq -nc \
-    --arg ts     "$ts" \
-    --arg tool   "PreCompact" \
-    --arg detail "lock-snapshot: ${state_section}" \
-    '{ts: $ts, tool: $tool, detail: $detail}' 2>/dev/null || true)
 
-if [ -n "$entry" ]; then
-    printf '%s\n' "$entry" >> "$STATE_FILE" 2>/dev/null || true
+if [ -n "${pending_entries:-}" ]; then
+    printf '%s' "$pending_entries" >> "$STATE_FILE" 2>/dev/null || true
 fi
 
-# ── Inject as additional_context ─────────────────────────────────────────────
-snapshot_text="<superpowers-lock-snapshot ts=\"${ts}\">
+# ── Inject as additionalContext ──────────────────────────────────────────────
+snapshot_text="<autodev-lock-snapshot ts=\"${ts}\">
 Pre-compaction scope-lock state (verify these after resuming):
 ${state_section}
 If any plan shows Locked status, treat the locked manifest as the authoritative
 contract. Do not re-derive scope from the conversation history. Use
 tests/plan-scope-check.sh --verify-lock <plan> to confirm the hash is intact.
-</superpowers-lock-snapshot>"
+</autodev-lock-snapshot>"
 
-escape_for_json() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\"/\\\"}"
-    s="${s//$'\n'/\\n}"
-    s="${s//$'\r'/\\r}"
-    s="${s//$'\t'/\\t}"
-    printf '%s' "$s"
+emit_additional_context() {
+    local event_name="$1"
+    local context="$2"
+    jq -n --arg event "$event_name" --arg context "$context" \
+        '{hookSpecificOutput:{hookEventName:$event,additionalContext:$context}}'
 }
 
-snapshot_escaped=$(escape_for_json "$snapshot_text")
-
-printf '{"additional_context":"%s"}\n' "$snapshot_escaped"
+emit_additional_context "PreCompact" "$snapshot_text"
 exit 0

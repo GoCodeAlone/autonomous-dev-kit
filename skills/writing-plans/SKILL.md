@@ -3,6 +3,8 @@ name: writing-plans
 description: Use when you have a spec or requirements for a multi-step task, before touching code
 ---
 
+> Condensed format: load `autodev:condensed-pipeline-writing` to expand shorthand.
+
 # Writing Plans
 
 ## Overview
@@ -17,35 +19,35 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 **Save plans to:** `docs/plans/YYYY-MM-DD-<feature-name>.md`
 
-## Plan Mode Detection
+## Native Planning Mode Detection
 
-**Prefer Claude's Plan Mode when available.** If you are running in Claude Code and can enter Plan Mode (e.g. via `Shift+Tab` or the `/plan` command), use it to draft the implementation plan. If Claude's Plan Mode is not available (Cursor, Codex, OpenCode, or other environments), use the Built-In Planning Process below.
+**Prefer host-native planning mode when available.** If the current agent interface offers a dedicated planning mode, use it to draft the implementation plan. If no planning mode is available, use the Built-In Planning Process below.
 
-### Using Claude's Plan Mode (Claude Code)
+### Using Host-Native Planning Mode
 
-1. **Enter Plan Mode** — explore the codebase, analyze the design, and draft the implementation plan using Claude's native Plan Mode
+1. **Enter planning mode** — explore the codebase, analyze the design, and draft the implementation plan using the host's native planning workflow
 2. **Follow the plan format below** — structure your Plan Mode output using the same Plan Document Header and Task Structure defined in this skill
-3. **Exit Plan Mode** — once the plan is fully drafted
+3. **Exit planning mode** — once the plan is fully drafted
 4. **Save the plan** — write the plan to `docs/plans/YYYY-MM-DD-<feature-name>.md` using the exact format from Plan Document Header and Task Structure sections below
 5. **Continue the pipeline** — proceed to Execution Handoff as normal
 
 The plan document you save MUST follow the same format described in Plan Document Header and Task Structure below, regardless of whether it was drafted in Plan Mode or with the built-in process. This ensures downstream skills (alignment-check, executing-plans, subagent-driven-development) work correctly.
 
-### Built-In Planning Process (Non-Claude Code)
+### Built-In Planning Process
 
-When Claude's Plan Mode is not available, use the full planning process described in the sections below to write the plan directly.
+When host-native planning mode is not available, use the full planning process described in the sections below to write the plan directly.
 
 ## Autonomous Mode
 
 When invoked from brainstorming with autonomous context (design already approved AND adversarially reviewed):
 
 1. **Skip user plan review** — write the plan directly without presenting it for approval
-2. **Invoke `superpowers:adversarial-design-review --phase=plan`** — adversarially attack the plan (and inherited design) before structural alignment is checked
-3. **On adversarial-review PASS** — invoke `superpowers:alignment-check`
-4. **On adversarial-review FAIL** — revise the plan based on Critical and Important findings, re-run adversarial review (max 2 cycles per gate)
-5. **On alignment PASS** — invoke `superpowers:subagent-driven-development` to begin execution
+2. **Invoke `autodev:adversarial-design-review --phase=plan`** — adversarially attack the plan (and inherited design) before structural alignment is checked
+3. **On adversarial-review PASS** — invoke `autodev:alignment-check`
+4. **On adversarial-review FAIL** — revise the plan based on tangible Critical and Important findings, re-run adversarial review until it converges to no tangible issues; remaining nitpicks become Minor PASS items
+5. **On alignment PASS** — invoke `autodev:subagent-driven-development` to begin execution
 6. **On alignment FAIL** — revise the plan based on drift items, re-check (max 2 cycles)
-7. **On persistent FAIL at any gate** — escalate to user with unresolved findings/drift summary
+7. **On persistent FAIL at any gate** — escalate to user only when unresolved tangible findings/drift require human input
 
 The autonomous flag propagates through the entire pipeline: writing-plans → adversarial-design-review (plan phase) → alignment-check → execution → PR creation → PR monitoring.
 
@@ -61,13 +63,13 @@ Do not add YAML frontmatter to signal design-only mode. Saved plan documents mus
 
 1. Save the plan to `docs/plans/YYYY-MM-DD-<feature-name>.md` as normal.
 2. Commit the plan as normal.
-3. Invoke `superpowers:adversarial-design-review --phase=plan` as normal.
-4. On adversarial-review FAIL: revise the plan based on findings and re-run adversarial review (max 2 cycles).
-5. On adversarial-review PASS: invoke `superpowers:alignment-check` as normal.
-6. **On alignment PASS: STOP.** Do NOT invoke `superpowers:subagent-driven-development`.
-7. **On alignment FAIL:** revise the plan based on drift items and run `superpowers:alignment-check` again, with a maximum of 2 alignment-check cycles total. If a revised plan passes alignment, still STOP and do not proceed to execution.
-8. **On persistent FAIL at any gate (after the cycle bound for that gate):** escalate to the user with an unresolved findings/drift summary. Do NOT invoke `superpowers:subagent-driven-development` or dispatch any execution.
-9. The plan + design + adversarial review reports sit in `docs/plans/` for future execution. The orchestrator (or a future invocation) can resume by passing the plan to `superpowers:subagent-driven-development` directly once gate issues are resolved.
+3. Invoke `autodev:adversarial-design-review --phase=plan` as normal.
+4. On adversarial-review FAIL: revise the plan based on tangible findings and re-run adversarial review until it converges to no tangible issues.
+5. On adversarial-review PASS: invoke `autodev:alignment-check` as normal.
+6. **On alignment PASS: STOP.** Do NOT invoke `autodev:subagent-driven-development`.
+7. **On alignment FAIL:** revise the plan based on drift items and run `autodev:alignment-check` again, with a maximum of 2 alignment-check cycles total. If a revised plan passes alignment, still STOP and do not proceed to execution.
+8. **On persistent FAIL at any gate:** escalate to the user with an unresolved findings/drift summary only when tangible findings or drift require human input. Do NOT invoke `autodev:subagent-driven-development` or dispatch any execution.
+9. The plan + design + adversarial review reports sit in `docs/plans/` for future execution. The orchestrator (or a future invocation) can resume by passing the plan to `autodev:subagent-driven-development` directly once gate issues are resolved.
 
 **When to use:**
 
@@ -75,7 +77,7 @@ Do not add YAML frontmatter to signal design-only mode. Saved plan documents mus
 - Cross-cutting designs that affect multiple workstreams; lock the design in before any one workstream starts.
 - Designs with prerequisites in-flight elsewhere; queue the plan now, execute when prerequisites land.
 
-**Default (no flag):** `superpowers:adversarial-design-review --phase=plan` PASS → `superpowers:alignment-check` PASS → invoke `superpowers:subagent-driven-development`. Adversarial review runs **before** alignment check so that idea-level findings are resolved before structural trace.
+**Default (no flag):** `autodev:adversarial-design-review --phase=plan` PASS → `autodev:alignment-check` PASS → invoke `autodev:subagent-driven-development`. Adversarial review runs **before** alignment check so that idea-level findings are resolved before structural trace.
 
 ## Verification per change class
 
@@ -93,12 +95,32 @@ When writing a plan task, the verification step must match the change class. A g
 | Plugin / extension | load into host + exercise representative call | exit 0; representative call returns expected value |
 | Documentation / comments | spell-check + render preview | no broken anchors |
 | Hook / trigger / event handler | fire the event; observe handler runs | logged side effect confirmed; assertion passes |
+| Multi-component boundary | run an integration/E2E path with real adjacent components where feasible | request/event crosses boundary; downstream side effect observed |
+| Infrastructure change | render/validate/plan/dry-run plus targeted apply in safe env when available | expected resource diff; no destructive prod action without approval |
 
 These examples are illustrative minimums; per-task `Expected:` fields must be literal values the check can assert against.
 
 Every plan task must include the verification step appropriate to its change class, as defined in the table above. For tasks whose `finishing-a-development-branch` Step 1b trigger conditions are met (build configuration, deployment configuration, version pins on runtime components, startup configuration, migrations, plugin loading paths), include the runtime-launch-validation step in the TDD breakdown as well **and include a one-line rollback note** in the task ("Rollback: revert commit + re-run migration tool down + smoke check"; "Rollback: pin to previous version X.Y.Z and rebuild"). Hook/trigger/event-handler changes are NOT in the Step 1b trigger list — they use only the class-appropriate verification from the table.
 
 The rollback note exists so that adversarial-design-review (plan phase) can verify the design's rollback story is actually wired into the plan, not orphaned in a paragraph. Plans without rollback notes for runtime-affecting tasks will fail adversarial review.
+
+## Multi-Component and Infrastructure Proof
+
+Plans must turn design-level validation into executable checks:
+
+- **Multi-component systems:** include at least one task or verification step that
+  exercises the real boundary. Examples: API writes DB and worker consumes row;
+  frontend calls backend and renders returned state; plugin loads in host and
+  executes representative call; CLI command reaches service and observes side
+  effect. Mock-only tests are allowed only when the design explains why the real
+  boundary cannot be exercised locally.
+- **Infrastructure changes:** include render/validate/plan/dry-run checks for
+  IaC or deployment config. If a safe sandbox apply is available, include it.
+  Destructive or production actions require explicit human approval already
+  recorded in the plan.
+- **Security-sensitive changes:** include verification for auth/authz behavior,
+  secret redaction, least-privilege permissions, and representative abuse cases
+  when applicable.
 
 ## Recording decisions
 
@@ -107,6 +129,20 @@ If the plan introduces a non-trivial choice that wasn't already captured by an A
 If every decision in the plan is already covered by ADRs cited from the design, skip this step.
 
 The plan author writes the expected output literally — not "passes tests" but "logs `engine ready` within 10 seconds and `/healthz` returns 200".
+
+## Project Design Guidance
+
+Before writing tasks, invoke `autodev:project-design-guidance` and read the
+guidance source cited by the design's `## Global Design Guidance` section.
+
+Plans must map guidance to work:
+
+- If guidance requires behavior, add or cite a task that implements it.
+- If guidance requires verification, include the exact command or inspection.
+- If guidance requires rollback, privacy, observability, accessibility, or
+  deployment safeguards, wire those into relevant tasks.
+- If the plan intentionally violates guidance, cite the ADR that approves the
+  exception. Without an ADR, the plan should fail adversarial review.
 
 ## Bite-Sized Task Granularity
 
@@ -124,7 +160,7 @@ The plan author writes the expected output literally — not "passes tests" but 
 ```markdown
 # [Feature Name] Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For the implementing agent:** REQUIRED SUB-SKILL: Use autodev:executing-plans to implement this plan task-by-task.
 
 **Goal:** [One sentence describing what this builds]
 
@@ -227,12 +263,12 @@ git commit -m "feat: add specific feature"
 
 When running autonomously (design already approved AND adversarially reviewed, no user interaction):
 
-1. Save the plan to `docs/plans/<filename>.md`
+1. Save the plan to `docs/plans/<filename>.md` using `autodev:condensed-pipeline-writing` for internal density
 2. Commit the plan
-3. Invoke `superpowers:adversarial-design-review --phase=plan` to attack the plan's ideas
-4. On adversarial-review PASS: invoke `superpowers:alignment-check` to verify design-to-plan structural alignment
-5. On alignment PASS: invoke `superpowers:subagent-driven-development` (which uses Agent Teams when available)
-6. On any FAIL: revise per findings/drift, re-run that gate (max 2 cycles per gate), then either continue or escalate to user
+3. Invoke `autodev:adversarial-design-review --phase=plan` to attack the plan's ideas
+4. On adversarial-review PASS: invoke `autodev:alignment-check` to verify design-to-plan structural alignment
+5. On alignment PASS: invoke `autodev:subagent-driven-development` (which uses Agent Teams when available)
+6. On adversarial-review FAIL: revise per tangible findings and re-run until no tangible Critical/Important issues remain; on alignment FAIL: revise per drift and re-check (max 2 alignment cycles), then either continue or escalate to user when human input is required
 7. Do NOT ask the user for execution choice — the pipeline is autonomous
 
 ### Manual Mode (direct invocation)
@@ -248,10 +284,10 @@ When invoked directly by the user (not from brainstorming pipeline):
 **Which approach?"**
 
 **If Subagent-Driven chosen:**
-- **REQUIRED SUB-SKILL:** Use superpowers:subagent-driven-development
+- **REQUIRED SUB-SKILL:** Use autodev:subagent-driven-development
 - Stay in this session
 - Fresh subagent per task + code review
 
 **If Parallel Session chosen:**
 - Guide them to open new session in worktree
-- **REQUIRED SUB-SKILL:** New session uses superpowers:executing-plans
+- **REQUIRED SUB-SKILL:** New session uses autodev:executing-plans

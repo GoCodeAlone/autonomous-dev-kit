@@ -1,13 +1,13 @@
 {
-  "name": "superpowers",
-  "description": "Core skills library for Claude Code: TDD, debugging, collaboration patterns, and proven techniques",
-  "version": "5.7.2",
+  "name": "autodev",
+  "description": "Autonomous development workflow skills for coding agents: design, review, planning, execution, monitoring, and retrospectives",
+  "version": "6.0.0",
   "author": {
-    "name": "Jesse Vincent",
-    "email": "jesse@fsck.com"
+    "name": "Jon Langevin",
+    "email": "jon@gocodealone.com"
   },
-  "homepage": "https://github.com/GoCodeAlone/claude-superpowers",
-  "repository": "https://github.com/GoCodeAlone/claude-superpowers",
+  "homepage": "https://github.com/GoCodeAlone/autonomous-dev-kit",
+  "repository": "https://github.com/GoCodeAlone/autonomous-dev-kit",
   "license": "MIT",
-  "keywords": ["skills", "tdd", "debugging", "collaboration", "best-practices", "workflows"]
+  "keywords": ["skills", "tdd", "debugging", "collaboration", "best-practices", "workflows", "agents", "autonomous-development"]
 }

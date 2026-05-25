@@ -3,6 +3,8 @@ name: alignment-check
 description: Use after writing-plans to verify the implementation plan covers all design requirements without drift or scope creep
 ---
 
+> Condensed format: load `autodev:condensed-pipeline-writing` to expand shorthand.
+
 # Design-to-Plan Alignment Check
 
 ## Overview
@@ -127,10 +129,10 @@ Re-run alignment check after revision. **Max 2 revision cycles** before escalati
 
 ## On PASS
 
-After alignment passes, **lock the plan's scope** so subsequent execution cannot silently rescope. Invoke `superpowers:scope-lock` with the plan path. The scope-lock skill:
+After alignment passes, **lock the plan's scope** so subsequent execution cannot silently rescope. Invoke `autodev:scope-lock` with the plan path. The scope-lock skill:
 
 1. Stamps the plan's `**Status:**` line with `Locked <UTC ISO-8601 timestamp>`.
-2. Writes the lock file by running `bash "${CLAUDE_PLUGIN_ROOT}/hooks/scope-lock-apply" <plan-path>` (do **not** use the Write tool — it is blocked for `*.scope-lock` paths). The helper computes the manifest's sha256 and writes `<plan-path>.scope-lock` via shell redirection.
+2. Writes the lock file by running the repo/plugin helper, e.g. `bash hooks/scope-lock-apply <plan-path>` from the autodev checkout or `bash "${CLAUDE_PLUGIN_ROOT}/hooks/scope-lock-apply" <plan-path>` when that host env var is present. Do **not** use the Write tool for `*.scope-lock` paths. The helper computes the manifest's sha256 and writes `<plan-path>.scope-lock` via shell redirection.
 3. Commits both files (`chore: lock scope for <feature> (alignment passed)`).
 
 After the lock is in place, proceed to execution:
@@ -147,6 +149,6 @@ If the plan does NOT contain a `## Scope Manifest` section, alignment-check fail
 
 **Calls:**
 - `writing-plans` (on FAIL) — for plan revision
-- `superpowers:scope-lock` (on PASS) — to apply the post-alignment lock that prevents silent rescoping during execution
+- `autodev:scope-lock` (on PASS) — to apply the post-alignment lock that prevents silent rescoping during execution
 - `subagent-driven-development` (on PASS, autonomous mode) — to begin execution
 - `tests/plan-scope-check.sh --plan <plan>` (during the manifest trace) — programmatic check that the plan's Scope Manifest is well-formed

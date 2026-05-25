@@ -5,7 +5,7 @@
 
 ## Goal
 
-Enhance claude-superpowers with three capabilities: (1) design-to-plan alignment verification, (2) Agent Teams as the default execution mode, and (3) full autonomy after design approval including automated PR monitoring.
+Enhance autonomous-dev-kit with three capabilities: (1) design-to-plan alignment verification, (2) Agent Teams as the default execution mode, and (3) full autonomy after design approval including automated PR monitoring.
 
 ## Architecture
 
@@ -150,4 +150,4 @@ Check for Agent Teams availability (TeamCreate tool presence or `CLAUDE_CODE_EXP
 | `skills/finishing-a-development-branch/SKILL.md` | Modify: auto-PR path |
 | `skills/alignment-check/SKILL.md` | Create |
 | `skills/pr-monitoring/SKILL.md` | Create |
-| `skills/using-superpowers/SKILL.md` | Modify: updated workflow, new skills |
+| `skills/using-autodev/SKILL.md` | Modify: updated workflow, new skills |
