@@ -3,6 +3,8 @@ name: dispatching-parallel-agents
 description: Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies
 ---
 
+> Condensed format: load `autodev:condensed-pipeline-writing` to expand shorthand.
+
 # Dispatching Parallel Agents
 
 ## Overview
@@ -64,7 +66,7 @@ Each agent gets:
 ### 3. Dispatch in Parallel
 
 ```typescript
-// In Claude Code / AI environment
+// In any agent environment with task dispatch
 Task("Fix agent-tool-abort.test.ts failures")
 Task("Fix batch-completion-behavior.test.ts failures")
 Task("Fix tool-approval-race-conditions.test.ts failures")

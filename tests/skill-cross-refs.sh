@@ -6,7 +6,7 @@
 #
 # Two classes of references are checked:
 #   1. Skill / agent references — `<name>/SKILL.md` paths and
-#      `superpowers:<name>` strings. Verifies the target exists either as
+#      `autodev:<name>` strings. Verifies the target exists either as
 #      skills/<name>/SKILL.md or as agents/<name>.md.
 #   2. Step references — `<skill> Step N[a-z]?` mentions in prose.
 #      Verifies that the cited skill's SKILL.md contains a heading or
@@ -107,19 +107,19 @@ while IFS= read -r f; do
     fi
   done < <(printf '%s\n' "$annotated" | grep -E 'skills/[a-z][a-z0-9-]+/SKILL\.md' || true)
 
-  # Pattern 3: `superpowers:<name>` mentions — must resolve to a skill OR agent
+  # Pattern 3: `autodev:<name>` mentions — must resolve to a skill OR agent
   while IFS=: read -r line_no line; do
     [ -z "${line_no:-}" ] && continue
-    # A line may have multiple superpowers:<name> mentions; check each.
+    # A line may have multiple autodev:<name> mentions; check each.
     for name in $(printf '%s' "$line" \
-                    | grep -oE 'superpowers:[a-z][a-z0-9-]+' \
-                    | sed -E 's|^superpowers:||' | sort -u); do
+                    | grep -oE 'autodev:[a-z][a-z0-9-]+' \
+                    | sed -E 's|^autodev:||' | sort -u); do
       if ! is_known_target "$name"; then
-        printf '%s:%s: "superpowers:%s" — no such skill or agent\n' \
+        printf '%s:%s: "autodev:%s" — no such skill or agent\n' \
           "$f" "$line_no" "$name" >> "$tmp_failures"
       fi
     done
-  done < <(printf '%s\n' "$annotated" | grep -E 'superpowers:[a-z][a-z0-9-]+' || true)
+  done < <(printf '%s\n' "$annotated" | grep -E 'autodev:[a-z][a-z0-9-]+' || true)
 done <<< "$scan_files_list"
 
 # --- 2. Step references --------------------------------------------------

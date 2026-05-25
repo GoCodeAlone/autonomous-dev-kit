@@ -3,6 +3,8 @@ name: post-merge-retrospective
 description: Use after a PR has merged and CI is green - reads design, plan, adversarial-review reports, code-review threads, and CI history to produce a short retrospective in docs/retros/ that closes the loop on which gates worked and which didn't
 ---
 
+> Condensed format: load `autodev:condensed-pipeline-writing` to expand shorthand.
+
 # Post-Merge Retrospective
 
 ## Overview
@@ -47,11 +49,20 @@ If the PR was opened ad-hoc (no design / plan in `docs/plans/`), this skill exit
    For each unique CI failure on the branch, ask: was this caught by `verification-before-completion` / `runtime-launch-validation` / something else, or did it slip past every local gate? Slips are gate misses too.
 
 5. **Score skill activations.**
-   Read `.claude/superpowers-state/in-progress.jsonl` (if present in the repo's `.claude/` directory) and verify the expected pipeline ran. The canonical chain documented in `skills/using-superpowers/SKILL.md` is:
+   Read `.claude/autodev-state/in-progress.jsonl` (if present in the repo's `.claude/` directory) and verify the expected pipeline ran. The canonical chain documented in `skills/using-autodev/SKILL.md` is:
    `brainstorming → adversarial-design-review (design) → writing-plans → adversarial-design-review (plan) → alignment-check → subagent-driven-development → finishing-a-development-branch → pr-monitoring → post-merge-retrospective`.
    For each gate that was *expected* to fire and didn't, that's a missed-activation. Use `tests/skill-activation-audit.sh` (this repo) to confirm what fired — note that the audit script reports each skill once even when invoked twice (e.g., adversarial-design-review for both phases), so cross-check phase counts against the JSONL `args=--phase=<design|plan>` entries when both phases are required.
 
-6. **Write the retro.**
+6. **Backfeed project design guidance.**
+   Invoke `autodev:project-design-guidance`. If the merged work reveals a
+   durable cross-design lesson, update `docs/design-guidance.md` in the same
+   commit as the retro. Durable lessons include language/runtime/framework
+   direction changes, new product/application modes, deployment/compliance/
+   privacy/operations constraints, repeated gate misses that should become a
+   design principle, or false assumptions in existing guidance. Do not append
+   one-off implementation trivia.
+
+7. **Write the retro.**
    Save to `docs/retros/YYYY-MM-DD-<feature>-retro.md` using the format below. Commit it.
 
 ## Retro format
@@ -85,7 +96,7 @@ If there are zero gate misses, write: "No gate misses this PR. All downstream is
 
 ## Missed skill activations
 
-Pipeline gates expected to fire (per `using-superpowers`): list any that didn't. Pull from `tests/skill-activation-audit.sh`.
+Pipeline gates expected to fire (per `using-autodev`): list any that didn't. Pull from `tests/skill-activation-audit.sh`.
 
 | Gate | Fired? | Notes |
 |---|---|---|
@@ -107,6 +118,12 @@ Pipeline gates expected to fire (per `using-superpowers`): list any that didn't.
 If a gate miss recurs across multiple retros, propose a concrete plugin change: a new bug class in `adversarial-design-review`, a new line in `runtime-launch-validation`, a new entry in `tests/skill-cross-refs.sh`. Cite the prior retros.
 
 If no plugin-level changes are warranted, say so.
+
+## Project guidance updates
+
+| Guidance file | Change | Reason |
+|---|---|---|
+| `docs/design-guidance.md` | <updated / no change> | <durable lesson or "no cross-design lesson"> |
 ```
 
 ## Dispatch
@@ -131,17 +148,22 @@ The retro is intentionally short. Long retros don't get read. The format above f
 - `pr-monitoring` — on its successful exit (CI green + reviews resolved).
 - Manual — any merged PR with matching artifacts.
 
-**Calls:** none. Retro is a leaf; the next iteration of the pipeline picks up cross-retro patterns when an author writes the next design.
+**Calls:**
+- `project-design-guidance` — when the retro identifies a durable cross-design
+  guidance change.
 
 **Reads:**
 - `docs/plans/` (design, plan, adversarial-review reports)
 - `decisions/` (ADRs cited from the design / plan)
 - `gh pr view`, `gh pr review-comments`, `gh run list`
-- `.claude/superpowers-state/in-progress.jsonl` (if present)
+- `.claude/autodev-state/in-progress.jsonl` (if present)
 - `tests/skill-activation-audit.sh` (this repo)
+- `docs/design-guidance.md` or equivalent project guidance, if present
 
 **Writes:**
 - `docs/retros/YYYY-MM-DD-<feature>-retro.md`
+- `docs/design-guidance.md` when the retro identifies a durable cross-design
+  guidance change
 
 ## Anti-patterns
 
@@ -149,3 +171,6 @@ The retro is intentionally short. Long retros don't get read. The format above f
 - **Validating the work.** This isn't "did we ship the right thing?" — that's the user's call. This is "did the gates do their job?" — that's a process question with binary answers per gate.
 - **Skipping the gate-miss table.** "Everything went great" is fine as a statement, but the table format forces you to walk every code-review comment and CI failure. Skipping it means signal is being lost.
 - **Acting on a single retro.** Plugin-level follow-ups require pattern across retros. One miss is signal; two is a trend.
+- **Failing to backfeed durable guidance.** If the application changes language,
+  product mode, deployment model, compliance posture, or another cross-design
+  constraint, update project guidance so the next design inherits it.

@@ -15,7 +15,7 @@ Use this template when dispatching a code quality reviewer subagent.
 </host>
 
 ```
-Task tool (superpowers:code-reviewer):
+Task tool (autodev:code-reviewer):
   Use template at skills/requesting-code-review/code-reviewer.md
 
   WHAT_WAS_IMPLEMENTED: [from implementer's report]

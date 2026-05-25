@@ -3,6 +3,8 @@ name: brainstorming
 description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
 ---
 
+> Condensed format: load `autodev:condensed-pipeline-writing` to expand shorthand.
+
 # Brainstorming Ideas Into Designs
 
 ## Overview
@@ -24,20 +26,22 @@ Every project goes through this process. A todo list, a single-function utility,
 You MUST create a task for each of these items and complete them in order:
 
 1. **Explore project context** — check files, docs, recent commits
-2. **Ask clarifying questions** — adaptive batching: group related questions to reduce round-trips; use targeted singles for follow-ups
-3. **Propose 2-3 approaches** — with trade-offs and your recommendation
-4. **List load-bearing assumptions explicitly** — every design rests on assumptions ("upstream API is idempotent", "single-tenant", "user has admin"); write them down so the adversarial reviewer can attack them
-5. **Self-challenge round** — before presenting to the user, role-play a skeptic against your own design and surface the top 3 doubts (see "Self-challenge round" below). Cleans up obvious issues before the user sees the design.
-6. **Present design** — in sections scaled to their complexity, get user approval after each section. Include the assumption list and the top doubts surfaced by the self-challenge so the user sees them.
-7. **Write design doc** — save to `docs/plans/YYYY-MM-DD-<topic>-design.md` and commit. The doc MUST include an `## Assumptions` section and a `## Rollback` section for change classes that affect runtime (build, deployment, version pins, startup config, migrations, plugin loading paths) — same trigger list as `runtime-launch-validation`.
-8. **Adversarial design review** — invoke `adversarial-design-review --phase=design`. On FAIL, revise per findings and re-run (max 2 cycles). On PASS, proceed.
-9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+2. **Apply project design guidance** — invoke `autodev:project-design-guidance`; read existing guidance or run its Q&A if no durable guidance exists
+3. **Ask clarifying questions** — adaptive batching: group related questions to reduce round-trips; use targeted singles for follow-ups
+4. **Propose 2-3 approaches** — with trade-offs and your recommendation
+5. **List load-bearing assumptions explicitly** — every design rests on assumptions ("upstream API is idempotent", "single-tenant", "user has admin"); write them down so the adversarial reviewer can attack them
+6. **Self-challenge round** — before presenting to the user, role-play a skeptic against your own design and surface the top 3 doubts (see "Self-challenge round" below). Cleans up obvious issues before the user sees the design.
+7. **Present design** — in sections scaled to their complexity, get user approval after each section. Include the assumption list, project-guidance fit, and the top doubts surfaced by the self-challenge so the user sees them.
+8. **Write design doc** — save to `docs/plans/YYYY-MM-DD-<topic>-design.md` and commit. Use `autodev:condensed-pipeline-writing` for internal density. The doc MUST include `## Global Design Guidance`, `## Security Review`, `## Infrastructure Impact`, `## Multi-Component Validation`, `## Assumptions`, and a `## Rollback` section for change classes that affect runtime (build, deployment, version pins, startup config, migrations, plugin loading paths) — same trigger list as `runtime-launch-validation`.
+9. **Adversarial design review** — invoke `adversarial-design-review --phase=design`. On FAIL, revise per tangible Critical/Important findings and re-run until the review converges to no tangible issues (remaining nitpicks become Minor PASS items). On PASS, proceed.
+10. **Transition to implementation** — invoke writing-plans skill to create implementation plan
 
 ## Process Flow
 
 ```dot
 digraph brainstorming {
     "Explore project context" [shape=box];
+    "Apply project guidance" [shape=box];
     "Ask clarifying questions" [shape=box];
     "Propose 2-3 approaches" [shape=box];
     "List assumptions" [shape=box];
@@ -48,7 +52,8 @@ digraph brainstorming {
     "Adversarial design review" [shape=diamond];
     "Invoke writing-plans skill" [shape=doublecircle];
 
-    "Explore project context" -> "Ask clarifying questions";
+    "Explore project context" -> "Apply project guidance";
+    "Apply project guidance" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
     "Propose 2-3 approaches" -> "List assumptions";
     "List assumptions" -> "Self-challenge round";
@@ -68,6 +73,7 @@ digraph brainstorming {
 
 **Understanding the idea:**
 - Check out the current project state first (files, docs, recent commits)
+- Invoke `autodev:project-design-guidance` before finalizing questions or approaches. If no durable guidance exists, ask the guidance Q&A first so the feature-specific brainstorm is not designed in isolation.
 - Ask questions using adaptive batching — group related questions to reduce round-trips:
   - **First batch:** covers purpose, constraints, scope, and tech choices
   - **Follow-ups:** Targeted single questions based on interesting or ambiguous answers
@@ -93,7 +99,7 @@ digraph brainstorming {
 - Once you believe you understand what you're building, present the design
 - Scale each section to its complexity: a few sentences if straightforward, up to 200-300 words if nuanced
 - Ask after each section whether it looks right so far
-- Cover: architecture, components, data flow, error handling, testing, **assumptions** (load-bearing claims), **rollback** (for runtime-affecting change classes)
+- Cover: architecture, components, data flow, error handling, testing, **global design guidance fit**, **security review**, **infrastructure impact**, **multi-component validation**, **assumptions** (load-bearing claims), **rollback** (for runtime-affecting change classes)
 - Include the top 3 doubts surfaced by the self-challenge round so the user can react before approving
 - Be ready to go back and clarify if something doesn't make sense
 
@@ -138,10 +144,10 @@ When the user wants design exploration without execution, they pass `--design-on
 
 **Behavior under `--design-only`:**
 
-1. Run the full brainstorming flow (explore context → questions → approaches → assumptions → self-challenge → design → write design doc → commit).
-2. Invoke `adversarial-design-review --phase=design`. On FAIL, revise the design and re-run (max 2 cycles). On persistent FAIL, escalate to user with unresolved findings — no plan dispatched.
+1. Run the full brainstorming flow (explore context → project-design-guidance → questions → approaches → assumptions → self-challenge → design → write design doc → commit).
+2. Invoke `adversarial-design-review --phase=design`. On FAIL, revise the design and re-run while tangible Critical/Important findings remain. When only nitpicks remain, record them as Minor and proceed on PASS. Escalate only for unresolved tangible findings that require user input — no plan dispatched.
 3. On PASS, invoke writing-plans, propagating the `--design-only` flag.
-4. writing-plans honors the flag: adversarial-design-review (plan phase) PASS → alignment-check PASS → STOP (no execution dispatched). On FAIL at any gate, writing-plans revises and re-checks per its normal FAIL handling, then stops — still no execution dispatched. On persistent FAIL (after max 2 revision cycles per gate), escalates to user — no execution dispatched regardless.
+4. writing-plans honors the flag: adversarial-design-review (plan phase) PASS → alignment-check PASS → STOP (no execution dispatched). On FAIL at any gate, writing-plans revises and re-checks per its normal FAIL handling, then stops — still no execution dispatched. On persistent tangible findings that require user input, escalates to user — no execution dispatched regardless.
 5. The pipeline ends with a committed design doc + plan in `docs/plans/` plus the adversarial review reports.
 
 **Default (no flag):** brainstorming → adversarial-design-review (design) → writing-plans → adversarial-design-review (plan) → alignment-check → subagent-driven-development → … (autonomous handoff to execution).
@@ -150,7 +156,7 @@ When the user wants design exploration without execution, they pass `--design-on
 
 **Documentation:**
 - Write the validated design to `docs/plans/YYYY-MM-DD-<topic>-design.md`
-- Include explicit `## Assumptions` and `## Rollback` sections (the latter only required for change classes that affect runtime — see the trigger list in `runtime-launch-validation` / `finishing-a-development-branch` Step 1b)
+- Include explicit `## Global Design Guidance`, `## Security Review`, `## Infrastructure Impact`, `## Multi-Component Validation`, `## Assumptions`, and `## Rollback` sections (rollback only required for change classes that affect runtime — see the trigger list in `runtime-launch-validation` / `finishing-a-development-branch` Step 1b)
 - Use elements-of-style:writing-clearly-and-concisely skill if available
 - **Record decisions** — if the design triggers any condition in `skills/recording-decisions/SKILL.md` (divergence from precedent, non-trivial trade-off between ≥2 plausible approaches, adversarial-review override, cross-skill structural change), invoke `recording-decisions` to add an ADR in `decisions/`, then cite it from this design doc
 - Commit the design document to git (and any new ADRs in the same commit)
@@ -158,13 +164,13 @@ When the user wants design exploration without execution, they pass `--design-on
 **Adversarial review (mandatory):**
 - Invoke `adversarial-design-review --phase=design` against the committed design
 - On PASS, proceed to autonomous handoff
-- On FAIL, revise the design based on Critical and Important findings and re-run (max 2 cycles before escalating to the user with unresolved findings)
+- On FAIL, revise the design based on Critical and Important findings and re-run until the review stops finding tangible issues; remaining nitpicks are recorded as Minor and do not keep the loop alive
 - The user may override a finding (mark it accepted with reasoning recorded in the design doc)
 
 **Autonomous handoff:**
 - This is the user's **last interaction point** — everything after runs autonomously
 - Invoke the writing-plans skill with autonomous context: the design is approved AND adversarially reviewed, no further user input needed
-- The writing-plans skill will prefer Claude's Plan Mode if available (Claude Code), falling back to its built-in planning process in other environments
+- The writing-plans skill will prefer host-native planning mode when available, falling back to its built-in planning process otherwise
 - The pipeline from here: writing-plans → adversarial-design-review (plan phase) → alignment-check → team execution → PR creation → PR monitoring
 - Do NOT invoke any other skill. `adversarial-design-review` runs first; on PASS, writing-plans is the next step. It handles the rest of the autonomous pipeline.
 
@@ -175,6 +181,7 @@ When the user wants design exploration without execution, they pass `--design-on
 - **YAGNI ruthlessly** - Remove unnecessary features from all designs
 - **Explore alternatives** - Always propose 2-3 approaches before settling
 - **Make assumptions explicit** - Load-bearing assumptions belong in writing, not in the agent's head
+- **Inherit project guidance** - Every design reads or creates project-wide guidance before choosing an approach
 - **Self-challenge before presenting** - Cleans up obvious issues; saves the user a round-trip
 - **Adversarial review before execution** - The cheapest place to kill a bad idea is before the plan is written
 - **Incremental validation** - Present design, get approval before moving on

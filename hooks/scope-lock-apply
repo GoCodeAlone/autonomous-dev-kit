@@ -52,6 +52,7 @@ trap 'rm -f "$tmpfile"' EXIT
 awk '
     /^## Scope Manifest[[:space:]]*$/ { in_section = 1; print; next }
     in_section && /^## / { in_section = 0 }
+    in_section && /^### Task [0-9]+[A-Za-z]*([: ]|$)/ { in_section = 0 }
     in_section { print }
 ' "$plan" > "$tmpfile"
 

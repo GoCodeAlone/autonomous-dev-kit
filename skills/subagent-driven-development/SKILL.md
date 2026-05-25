@@ -3,6 +3,8 @@ name: subagent-driven-development
 description: Use when executing implementation plans with independent tasks in the current session
 ---
 
+> Condensed format: load `autodev:condensed-pipeline-writing` to expand shorthand.
+
 # Subagent-Driven Development
 
 Execute a plan using either a role-based subagent team or sequential subagents, with two-stage review: spec compliance first, then code quality.
@@ -232,7 +234,7 @@ Wait for all shutdown approvals, then:
 TeamDelete()
 ```
 
-Invoke `superpowers:finishing-a-development-branch`.
+Invoke `autodev:finishing-a-development-branch`.
 
 </host>
 
@@ -258,8 +260,8 @@ For each task in the plan:
    exits non-zero, stop the line: the manifest has drifted from the locked hash, or
    reality has drifted from the manifest. Surface the specific discrepancy to the user
    and wait for instruction. Do NOT silently re-lock or proceed. See
-   `skills/scope-lock/SKILL.md` for the unlock path (which requires explicit user
-   approval and an ADR via `recording-decisions`).
+   `skills/scope-lock/SKILL.md` for the amendment path (which requires explicit
+   user approval and an ADR via `recording-decisions` when the manifest changes).
 1. **Dispatch implementer subagent** — provide the full task text, the design doc path, and
    the working directory in the prompt. Use `./implementer-prompt.md` as the base template.
 2. **Answer questions** if the implementer surfaces blockers.
@@ -271,7 +273,7 @@ For each task in the plan:
 7. If quality issues found → implementer fixes → re-review until approved.
 8. Mark task complete and move to the next.
 
-After all tasks: run `bash tests/plan-scope-check.sh --plan <plan-path> --verify-lock <plan-path>` one final time, then invoke `superpowers:finishing-a-development-branch`. If the scope check fails, do not invoke finishing — surface the discrepancy first.
+After all tasks: run `bash tests/plan-scope-check.sh --plan <plan-path> --verify-lock <plan-path>` one final time, then invoke `autodev:finishing-a-development-branch`. If the scope check fails, do not invoke finishing — surface the discrepancy first.
 
 <host: codex>
 
@@ -284,7 +286,9 @@ Codex subagents do not share a task list. Use these conventions instead:
 - **Handoff surface**: use git branch names (`task-N-<slug>`) and PR diffs as the review
   surface. The spec-reviewer and code-reviewer read the PR diff, not a task record.
 - **Progress tracking**: after each task completes, record completion in the orchestrating
-  agent's own context (e.g., a local list) rather than a shared task table.
+  agent's own context and append a compact JSONL row
+  (`{"ev":"phase","pl":"...","ph":"...","st":"done","e":"...","nx":"..."}`) to
+  `.autodev/state/phase-progress.jsonl` when a locked plan remains active.
 - **No DM channel**: pass reviewer output back to the orchestrator as a return value; the
   orchestrator decides whether to re-dispatch the implementer.
 
@@ -298,7 +302,7 @@ Codex subagents do not share a task list. Use these conventions instead:
 - Start implementation on main/master without explicit user consent
 - Skip reviews (spec compliance OR code quality)
 - Skip the scope-lock checkpoint between tasks (Step 0 in Sequential Mode; equivalent watchdog cadence in Agent Teams Mode — see Resilience section)
-- Drop a task because it turned out to be hard. Surface the obstruction to the user; the unlock path in `skills/scope-lock/SKILL.md` is the only sanctioned way to remove a task from the manifest.
+- Drop a task because it turned out to be hard. Surface the obstruction to the user; the amendment path in `skills/scope-lock/SKILL.md` is the only sanctioned way to remove a task from the manifest.
 - Add a task that isn't in the manifest. Discovering "we also need X" mid-execution is not a license to silently add it. Either it's already covered by an existing task, or it's a manifest amendment (which requires going back through brainstorming for the new scope).
 - Collapse PRs. The manifest's PR Grouping table is a contract; if it has 3 rows, the work ships as 3 PRs.
 - Proceed with unfixed issues
@@ -322,16 +326,16 @@ Codex subagents do not share a task list. Use these conventions instead:
 ## Integration
 
 **Required workflow skills:**
-- **superpowers:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
-- **superpowers:writing-plans** - Creates the plan this skill executes
-- **superpowers:alignment-check** - Verifies plan matches design (autonomous mode)
-- **superpowers:finishing-a-development-branch** - Complete development after all tasks
+- **autodev:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
+- **autodev:writing-plans** - Creates the plan this skill executes
+- **autodev:alignment-check** - Verifies plan matches design (autonomous mode)
+- **autodev:finishing-a-development-branch** - Complete development after all tasks
 
 **Subagents/teammates should use:**
-- **superpowers:test-driven-development** - Follow TDD for each task
+- **autodev:test-driven-development** - Follow TDD for each task
 
 **Alternative workflow:**
-- **superpowers:executing-plans** - Use for parallel session instead of same-session execution
+- **autodev:executing-plans** - Use for parallel session instead of same-session execution
 
 ---
 
@@ -351,12 +355,12 @@ How the re-orientation context arrives depends on the host:
 
 <host: claude-code, cursor>
 
-Hooks automate it. The plugin's `SessionStart` hook (matcher `compact|resume`) fires inside the compacted session and injects a `<superpowers-resumption-context>` block containing:
+Hooks automate it. The plugin's `SessionStart` hook (matcher `compact|resume`) fires inside the compacted session and injects a `<autodev-resumption-context>` block containing:
 
 - The first user message from the transcript (the "original task") — this is what re-anchors a compacted **subagent** to its assignment.
-- Recent superpowers activity (last 30 entries from `.claude/superpowers-state/in-progress.jsonl`) — this is what re-anchors the **lead** in the pipeline.
+- Recent autodev activity (last 30 entries from `.claude/autodev-state/in-progress.jsonl`) — this is what re-anchors the **lead** in the pipeline.
 
-Activity is captured by a `PostToolUse` hook (matcher `Skill|Agent|Task.*`) that appends each invocation to the JSONL state file (capped at 200 lines; wiped on `startup|clear` or when the session source can't be determined). The state file is project-local at `.claude/superpowers-state/in-progress.jsonl`.
+Activity is captured by a `PostToolUse` hook (matcher `Skill|Agent|Task.*`) that appends each invocation as compressed JSONL (`ev`, `sk`, `ag`, `tt`, `d`) capped at 200 lines; wiped on `startup|clear` or when the session source can't be determined. The state file is project-local at `.claude/autodev-state/in-progress.jsonl`.
 
 You don't opt in. When you see the resumption block, treat it as authoritative and reorient before responding.
 
@@ -414,7 +418,7 @@ Subagents are teammates, not infrastructure. If one keeps producing low-quality 
 - 3 cumulative quality issues across tasks in one session → stop dispatching that subagent_type for the remainder of the session; re-route its work to an alternative.
 - A subagent that ignores explicit guidance twice in a row → stop using it; the issue is the agent profile, not the prompt.
 
-When you rotate, briefly state the rotation in user-facing text ("Rotating off `general-purpose` for review tasks — two consecutive rejections; using `superpowers:code-reviewer` instead") so the user has a chance to redirect.
+When you rotate, briefly state the rotation in user-facing text ("Rotating off `general-purpose` for review tasks — two consecutive rejections; using `autodev:code-reviewer` instead") so the user has a chance to redirect.
 
 ### Why these patterns
 

@@ -6,7 +6,7 @@ This file used to track items that had been considered but deferred. Those items
 |---|---|
 | Decision log / ADRs | `skills/recording-decisions/SKILL.md` + `decisions/` directory + `decisions/0000-template.md` |
 | Post-merge retrospective | `skills/post-merge-retrospective/SKILL.md` + `docs/retros/` directory; wired into `pr-monitoring` exit |
-| Skill-usage telemetry | `tests/skill-activation-audit.sh` (reads `.claude/superpowers-state/in-progress.jsonl`) |
+| Skill-usage telemetry | `tests/skill-activation-audit.sh` (reads `.claude/autodev-state/in-progress.jsonl`) |
 | Brainstorming cost-control gate | 5-batch soft cap section in `skills/brainstorming/SKILL.md` |
 | Cross-skill consistency invariants | `tests/skill-cross-refs.sh` |
 

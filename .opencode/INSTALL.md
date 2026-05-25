@@ -1,4 +1,4 @@
-# Installing Superpowers for OpenCode
+# Installing Autonomous Dev Kit for OpenCode
 
 ## Prerequisites
 
@@ -7,10 +7,10 @@
 
 ## Installation Steps
 
-### 1. Clone Superpowers
+### 1. Clone Autonomous Dev Kit
 
 ```bash
-git clone https://github.com/GoCodeAlone/claude-superpowers.git ~/.config/opencode/superpowers
+git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git ~/.config/opencode/autodev
 ```
 
 ### 2. Register the Plugin
@@ -19,25 +19,25 @@ Create a symlink so OpenCode discovers the plugin:
 
 ```bash
 mkdir -p ~/.config/opencode/plugins
-rm -f ~/.config/opencode/plugins/superpowers.js
-ln -s ~/.config/opencode/superpowers/.opencode/plugins/superpowers.js ~/.config/opencode/plugins/superpowers.js
+rm -f ~/.config/opencode/plugins/autodev.js
+ln -s ~/.config/opencode/autodev/.opencode/plugins/autodev.js ~/.config/opencode/plugins/autodev.js
 ```
 
 ### 3. Symlink Skills
 
-Create a symlink so OpenCode's native skill tool discovers superpowers skills:
+Create a symlink so OpenCode's native skill tool discovers autodev skills:
 
 ```bash
 mkdir -p ~/.config/opencode/skills
-rm -rf ~/.config/opencode/skills/superpowers
-ln -s ~/.config/opencode/superpowers/skills ~/.config/opencode/skills/superpowers
+rm -rf ~/.config/opencode/skills/autodev
+ln -s ~/.config/opencode/autodev/skills ~/.config/opencode/skills/autodev
 ```
 
 ### 4. Restart OpenCode
 
-Restart OpenCode. The plugin will automatically inject superpowers context.
+Restart OpenCode. The plugin will automatically inject autodev context.
 
-Verify by asking: "do you have superpowers?"
+Verify by asking: "do you have autodev?"
 
 ## Usage
 
@@ -54,7 +54,7 @@ use skill tool to list skills
 Use OpenCode's native `skill` tool to load a specific skill:
 
 ```
-use skill tool to load superpowers/brainstorming
+use skill tool to load autodev/brainstorming
 ```
 
 ### Personal Skills
@@ -82,12 +82,12 @@ description: Use when [condition] - [what it does]
 
 Create project-specific skills in `.opencode/skills/` within your project.
 
-**Skill Priority:** Project skills > Personal skills > Superpowers skills
+**Skill Priority:** Project skills > Personal skills > Autonomous Dev Kit skills
 
 ## Updating
 
 ```bash
-cd ~/.config/opencode/superpowers
+cd ~/.config/opencode/autodev
 git pull
 ```
 
@@ -95,14 +95,14 @@ git pull
 
 ### Plugin not loading
 
-1. Check plugin symlink: `ls -l ~/.config/opencode/plugins/superpowers.js`
-2. Check source exists: `ls ~/.config/opencode/superpowers/.opencode/plugins/superpowers.js`
+1. Check plugin symlink: `ls -l ~/.config/opencode/plugins/autodev.js`
+2. Check source exists: `ls ~/.config/opencode/autodev/.opencode/plugins/autodev.js`
 3. Check OpenCode logs for errors
 
 ### Skills not found
 
-1. Check skills symlink: `ls -l ~/.config/opencode/skills/superpowers`
-2. Verify it points to: `~/.config/opencode/superpowers/skills`
+1. Check skills symlink: `ls -l ~/.config/opencode/skills/autodev`
+2. Verify it points to: `~/.config/opencode/autodev/skills`
 3. Use `skill` tool to list what's discovered
 
 ### Tool mapping
@@ -115,12 +115,12 @@ When skills reference Claude Code tools:
 
 ## Cross-LLM Behavior
 
-Superpowers skills use `<host: claude-code>` blocks to gate Claude Code-only content. OpenCode skips those blocks automatically; no configuration needed.
+Autonomous Dev Kit skills use `<host: claude-code>` blocks to gate Claude Code-only content. OpenCode skips those blocks automatically; no configuration needed.
 
 To enable host-conditional logic inside skills (so skills can adapt behavior per host), declare your host in `~/.config/opencode/AGENTS.md`:
 
 ```markdown
-# Superpowers host declaration
+# Autonomous Dev Kit host declaration
 Host: opencode
 ```
 
@@ -128,5 +128,5 @@ Add this block once. Skills that inspect the host context will use it to pick th
 
 ## Getting Help
 
-- Report issues: https://github.com/GoCodeAlone/claude-superpowers/issues
-- Full documentation: https://github.com/GoCodeAlone/claude-superpowers/blob/main/docs/README.opencode.md
+- Report issues: https://github.com/GoCodeAlone/autonomous-dev-kit/issues
+- Full documentation: https://github.com/GoCodeAlone/autonomous-dev-kit/blob/main/docs/README.opencode.md

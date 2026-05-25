@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# PostToolUse hook: record superpowers-relevant activity
+# PostToolUse hook: record autodev-relevant activity
 #
-# Appends an entry to .claude/superpowers-state/in-progress.jsonl every time
+# Appends a compact entry to .claude/autodev-state/in-progress.jsonl every time
 # the lead/orchestrator agent invokes a Skill, Agent, or Task* tool
 # (Task, TaskCreate, TaskList, TaskGet, TaskUpdate, etc.). The session-start
 # hook replays this file on compact|resume so the agent can resume the
@@ -24,14 +24,13 @@ case "$tool_name" in
     Skill)
         skill=$(printf '%s' "$hook_input" | jq -r '.tool_input.skill // ""' 2>/dev/null || true)
         args=$(printf  '%s' "$hook_input" | jq -r '.tool_input.args  // ""' 2>/dev/null || true)
-        detail="skill=${skill}"
-        [ -n "$args" ] && detail="${detail} args=${args:0:80}"
+        ev="skill"
         ;;
     Agent|Task)
         sa_type=$(printf '%s' "$hook_input" | jq -r '.tool_input.subagent_type // "general-purpose"' 2>/dev/null || true)
         desc=$(printf    '%s' "$hook_input" | jq -r '.tool_input.description   // ""'                 2>/dev/null || true)
         bg=$(printf      '%s' "$hook_input" | jq -r '.tool_input.run_in_background // false'         2>/dev/null || true)
-        detail="agent=${sa_type} desc=\"${desc:0:120}\" bg=${bg}"
+        ev="agent"
         ;;
     Task*)
         # Task family tools (TaskCreate/TaskList/TaskGet/TaskUpdate/etc.)
@@ -40,27 +39,45 @@ case "$tool_name" in
         sa_type=$(printf '%s' "$hook_input" | jq -r '.tool_input.subagent_type // ""' 2>/dev/null || true)
         desc=$(printf    '%s' "$hook_input" | jq -r '.tool_input.description   // .tool_input.title // ""' 2>/dev/null || true)
         task_id=$(printf '%s' "$hook_input" | jq -r '.tool_input.id // .tool_input.task_id // ""' 2>/dev/null || true)
-        detail="task_tool=${tool_name}"
-        [ -n "$sa_type" ] && detail="${detail} agent=${sa_type}"
-        [ -n "$task_id" ] && detail="${detail} id=${task_id}"
-        [ -n "$desc"    ] && detail="${detail} desc=\"${desc:0:120}\""
+        ev="task"
         ;;
     *)
         exit 0
         ;;
 esac
 
-STATE_DIR="${cwd_dir}/.claude/superpowers-state"
+STATE_DIR="${cwd_dir}/.claude/autodev-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 STATE_FILE="${STATE_DIR}/in-progress.jsonl"
 LOCK_FILE="${STATE_DIR}/.in-progress.lock"
 
 ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-entry=$(jq -nc \
-    --arg ts     "$ts" \
-    --arg tool   "$tool_name" \
-    --arg detail "$detail" \
-    '{ts: $ts, tool: $tool, detail: $detail}' 2>/dev/null || true)
+case "$ev" in
+    skill)
+        entry=$(jq -nc \
+            --arg ts "$ts" \
+            --arg sk "$skill" \
+            --arg args "${args:0:80}" \
+            '{ts:$ts,ev:"skill",sk:$sk} + (if $args != "" then {args:$args} else {} end)' 2>/dev/null || true)
+        ;;
+    agent)
+        entry=$(jq -nc \
+            --arg ts "$ts" \
+            --arg ag "$sa_type" \
+            --arg d "${desc:0:120}" \
+            --argjson bg "$bg" \
+            '{ts:$ts,ev:"agent",ag:$ag,bg:$bg} + (if $d != "" then {d:$d} else {} end)' 2>/dev/null || true)
+        ;;
+    task)
+        entry=$(jq -nc \
+            --arg ts "$ts" \
+            --arg tt "$tool_name" \
+            --arg ag "$sa_type" \
+            --arg id "$task_id" \
+            --arg d "${desc:0:120}" \
+            '{ts:$ts,ev:"task",tt:$tt} + (if $ag != "" then {ag:$ag} else {} end) + (if $id != "" then {id:$id} else {} end) + (if $d != "" then {d:$d} else {} end)' 2>/dev/null || true)
+        ;;
+esac
 [ -z "$entry" ] && exit 0
 
 # Append + cap under a lock so concurrent invocations from lead + subagents

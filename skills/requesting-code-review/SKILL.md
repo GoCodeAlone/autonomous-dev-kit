@@ -3,6 +3,8 @@ name: requesting-code-review
 description: Use when completing tasks, implementing major features, or before merging to verify work meets requirements
 ---
 
+> Condensed format: load `autodev:condensed-pipeline-writing` to expand shorthand.
+
 # Requesting Code Review
 
 ## Reviewer brief — adversarial framing
@@ -122,7 +124,7 @@ Reviewer must justify the verdict in one sentence:
 
 Reflexive SHIP-IT without justification is forbidden.
 
-Dispatch superpowers:code-reviewer subagent to catch issues before they cascade.
+Dispatch autodev:code-reviewer subagent to catch issues before they cascade.
 
 **Core principle:** Review early, review often.
 
@@ -215,7 +217,7 @@ You: Let me request code review before proceeding.
 BASE_SHA=$(git rev-parse HEAD~1)  # or: git log --oneline | grep "Task 1" | head -1 | awk '{print $1}'
 HEAD_SHA=$(git rev-parse HEAD)
 
-[Dispatch superpowers:code-reviewer subagent — brief filled in verbatim from the review-request template:]
+[Dispatch autodev:code-reviewer subagent — brief filled in verbatim from the review-request template:]
 
 You are a code reviewer with adversarial framing. Find at least three things
 wrong with this code, even if they seem minor — or, if fewer than three are
@@ -255,7 +257,7 @@ Verdict: REQUEST-CHANGES — one Important finding (missing progress indicators)
 
 You: [Fix progress indicators, extract constant, push new commit]
 
-[Dispatch superpowers:code-reviewer subagent — round 2, full diff re-read, same verbatim brief]
+[Dispatch autodev:code-reviewer subagent — round 2, full diff re-read, same verbatim brief]
 HEAD_SHA=$(git rev-parse HEAD)  # re-run: HEAD now points to the new fix commit(s)
 (diff range $BASE_SHA..$HEAD_SHA — same base, new tip that includes the fix commits)
 

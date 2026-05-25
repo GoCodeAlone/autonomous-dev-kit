@@ -1,4 +1,38 @@
-# Superpowers Release Notes
+# Autonomous Dev Kit Release Notes
+
+## v6.0.0 (2026-05-25)
+
+### Rename and ownership
+
+- Renamed the project from `claude-superpowers` to `autonomous-dev-kit`.
+- Renamed the skill namespace from `superpowers:` to `autodev:`.
+- Renamed the Claude plugin from `superpowers` to `autodev`.
+- Renamed the entry skill from `using-superpowers` to `using-autodev`.
+- Updated author metadata to Jon Langevin / `jon@gocodealone.com`.
+- Updated repository references to `GoCodeAlone/autonomous-dev-kit`.
+- Updated the Claude marketplace target to `GoCodeAlone/claude-marketplace`.
+
+### Hook and workflow hardening
+
+- Fixed hook JSON output to use host-compatible `hookSpecificOutput.additionalContext`.
+- Added hook contract tests for SessionStart, UserPromptSubmit, PR reminders,
+  PreCompact snapshots, Stop-hook phase continuation, compact state rows, and
+  locked-plan design backports.
+- Relaxed adversarial review loops so tangible issues continue driving
+  revisions, while nitpicks no longer keep the loop alive.
+- Changed scope locks to hash only the `## Scope Manifest` block, allowing
+  design/backport notes without invalidating locked scope.
+- Added phase-completion introspection and compressed phase-progress JSONL.
+
+### Design pipeline additions
+
+- Added `project-design-guidance` for durable project-wide design constraints.
+- Added `condensed-pipeline-writing` for compact internal design/review/plan
+  artifacts and compact JSONL state.
+- Added required security, infrastructure, and multi-component validation
+  checks across brainstorming, planning, adversarial review, and retros.
+- Updated README and install docs with `npx skills add` commands for Claude
+  Code and Codex.
 
 ## v5.6.0 (2026-05-01)
 
@@ -31,7 +65,7 @@ Three modes:
 
 Exit codes: `0` clean / `1` failures / `3` usage error. Wirable into CI.
 
-### New invariant: strict-interpretation rule (in `using-superpowers`)
+### New invariant: strict-interpretation rule (in `using-autodev`)
 
 When the autonomous pipeline is running and a user instruction is ambiguous, the agent MUST pick the **most-faithful-to-the-locked-manifest** interpretation. A table mapping common ambiguous phrases to their forbidden-loose and mandated-strict readings:
 
@@ -53,7 +87,7 @@ When multiple strict interpretations remain plausible, the agent stops and asks.
 - **`finishing-a-development-branch`** — new Step 1d "Scope Completeness Check" verifies every manifest task has implementing commits and that the manifest's PR count matches reality. Autonomous mode now creates one PR per row in the PR Grouping table; collapsing is a stop-the-line error. PR body template includes a Scope Manifest section.
 - **`recording-decisions`** — fifth trigger condition added: user-approved scope reduction. ADR is cited from the manifest's `Status: Reduced …` line and from each PR body shipped under the reduced manifest.
 - **`pr-monitoring`** — autonomous mode spawns one monitor per PR (manifest-driven), not one monitor per branch.
-- **`using-superpowers`** — pipeline auto-chain extended with explicit `scope-lock` step between alignment-check and subagent-driven-development. Strict-interpretation invariant added.
+- **`using-autodev`** — pipeline auto-chain extended with explicit `scope-lock` step between alignment-check and subagent-driven-development. Strict-interpretation invariant added.
 
 ### Documentation
 
@@ -92,7 +126,7 @@ Wired into `pr-monitoring`'s exit conditions. The retro is intentionally short �
 
 **Skill-usage telemetry (`tests/skill-activation-audit.sh`)**
 
-Parses `.claude/superpowers-state/in-progress.jsonl` (the activity log written by the existing `record-activity` PostToolUse hook) and reports which skills / agents fired during a session. Detects "expected but missing" pipeline gates by walking the canonical chain (brainstorming → adversarial-design-review → … → pr-monitoring). Strictly local; never transmits anything off the machine. Used directly by `post-merge-retrospective`. Exit code 2 when expected gates didn't fire so it can be wired into CI for automation runs.
+Parses `.claude/autodev-state/in-progress.jsonl` (the activity log written by the existing `record-activity` PostToolUse hook) and reports which skills / agents fired during a session. Detects "expected but missing" pipeline gates by walking the canonical chain (brainstorming → adversarial-design-review → … → pr-monitoring). Strictly local; never transmits anything off the machine. Used directly by `post-merge-retrospective`. Exit code 2 when expected gates didn't fire so it can be wired into CI for automation runs.
 
 **Brainstorming cost-control gate (`skills/brainstorming/SKILL.md`)**
 
@@ -102,7 +136,7 @@ Soft cap of 5 question-batches per brainstorming session. On exceed, the agent s
 
 New test that scans `skills/**/SKILL.md` and `agents/*.md` for cross-references and verifies they resolve:
 
-- `<skill>/SKILL.md` paths and `superpowers:<name>` mentions resolve to either a skills directory or an `agents/<name>.md` file.
+- `<skill>/SKILL.md` paths and `autodev:<name>` mentions resolve to either a skills directory or an `agents/<name>.md` file.
 - `<skill> Step <N>[a-z]?` references resolve to a heading or bold-line label in the cited skill.
 - Skips fenced code blocks (placeholder examples like `path/SKILL.md` inside ```code``` are not real references).
 
@@ -197,8 +231,8 @@ Every existing review gate attacks code (`requesting-code-review`, spec-reviewer
 
 Long autonomous runs are now resilient to context compaction. Two hooks ship in `hooks/hooks.json`:
 
-- **`SessionStart` (matcher `compact|resume`)** — re-injects a `<superpowers-resumption-context>` block into the resumed session containing the original task (extracted from the first user message in the transcript) and the last 30 superpowers activity entries. This re-anchors a compacted **subagent** to its original assignment and re-anchors the **lead orchestrator** to its place in the pipeline. The hook fires inside each session against its own transcript, so subagents recover their own task context automatically.
-- **`PostToolUse` (matcher `Skill|Agent|Task.*`)** — appends each `Skill`, `Agent`, and `Task*`-family (`Task`, `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`, etc.) invocation to `.claude/superpowers-state/in-progress.jsonl` (capped at 200 lines; wiped on `startup|clear`, or when the session source can't be determined). Append+rotate is guarded by a `flock` when available so concurrent writes from the lead and subagents don't corrupt the JSONL. This is the activity log that the SessionStart hook replays.
+- **`SessionStart` (matcher `compact|resume`)** — re-injects a `<autodev-resumption-context>` block into the resumed session containing the original task (extracted from the first user message in the transcript) and the last 30 autodev activity entries. This re-anchors a compacted **subagent** to its original assignment and re-anchors the **lead orchestrator** to its place in the pipeline. The hook fires inside each session against its own transcript, so subagents recover their own task context automatically.
+- **`PostToolUse` (matcher `Skill|Agent|Task.*`)** — appends each `Skill`, `Agent`, and `Task*`-family (`Task`, `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`, etc.) invocation to `.claude/autodev-state/in-progress.jsonl` (capped at 200 lines; wiped on `startup|clear`, or when the session source can't be determined). Append+rotate is guarded by a `flock` when available so concurrent writes from the lead and subagents don't corrupt the JSONL. This is the activity log that the SessionStart hook replays.
 
 The state file is project-local and in JSONL format. Both hooks no-op gracefully when `jq` is unavailable. On hosts without a documented hooks system (Codex, OpenCode), the same recovery pattern is described in prose as a manual discipline.
 
@@ -259,7 +293,7 @@ Added autonomous mode: when invoked from the pipeline (not by user), skips the 4
 
 When invoked from the brainstorming pipeline, skips user plan review, invokes alignment-check, and on PASS invokes subagent-driven-development automatically. Manual mode (direct invocation) preserves the existing execution choice prompt.
 
-**`using-superpowers` pipeline documentation**
+**`using-autodev` pipeline documentation**
 
 Updated Skill Priority section to document pipeline auto-chaining as item 3. "Let's build X" now explicitly routes through the autonomous pipeline after design approval.
 
@@ -269,7 +303,7 @@ Updated Skill Priority section to document pipeline auto-chaining as item 3. "Le
 
 **Cursor support**
 
-Superpowers now works with Cursor's plugin system. Includes a `.cursor-plugin/plugin.json` manifest and Cursor-specific installation instructions in the README. The SessionStart hook output now includes an `additional_context` field alongside the existing `hookSpecificOutput.additionalContext` for Cursor hook compatibility.
+Autonomous Dev Kit now works with Cursor's plugin system. Includes a `.cursor-plugin/plugin.json` manifest and Cursor-specific installation instructions in the README. The SessionStart hook output now includes an `additional_context` field alongside the existing `hookSpecificOutput.additionalContext` for Cursor hook compatibility.
 
 ### Fixed
 
@@ -287,7 +321,7 @@ This fixes SessionStart failures on Windows with spaces in paths, missing WSL, `
 
 ## v4.3.0 (2026-02-12)
 
-This fix should dramatically improve superpowers skills compliance and should reduce the chances of Claude entering its native plan mode unintentionally.
+This fix should dramatically improve autodev skills compliance and should reduce the chances of Claude entering its native plan mode unintentionally.
 
 ### Changed
 
@@ -301,7 +335,7 @@ Models were skipping the design phase and jumping straight to implementation ski
 - Anti-pattern callout for "this is too simple to need a design" — the exact rationalization models use to skip the process
 - Design section sizing based on section complexity, not project complexity
 
-**Using-superpowers workflow graph intercepts EnterPlanMode**
+**Using-autodev workflow graph intercepts EnterPlanMode**
 
 Added an `EnterPlanMode` intercept to the skill flow graph. When the model is about to enter Claude's native plan mode, it checks whether brainstorming has happened and routes through the brainstorming skill instead. Plan mode is never entered.
 
@@ -309,7 +343,7 @@ Added an `EnterPlanMode` intercept to the skill flow graph. When the model is ab
 
 **SessionStart hook now runs synchronously**
 
-Changed `async: true` to `async: false` in hooks.json. When async, the hook could fail to complete before the model's first turn, meaning using-superpowers instructions weren't in context for the first message.
+Changed `async: true` to `async: false` in hooks.json. When async, the hook could fail to complete before the model's first turn, meaning using-autodev instructions weren't in context for the first message.
 
 ## v4.2.0 (2026-02-05)
 
@@ -317,7 +351,7 @@ Changed `async: true` to `async: false` in hooks.json. When async, the hook coul
 
 **Codex: Replaced bootstrap CLI with native skill discovery**
 
-The `superpowers-codex` bootstrap CLI, Windows `.cmd` wrapper, and related bootstrap content file have been removed. Codex now uses native skill discovery via `~/.agents/skills/superpowers/` symlink, so the old `use_skill`/`find_skills` CLI tools are no longer needed.
+The `autodev-codex` bootstrap CLI, Windows `.cmd` wrapper, and related bootstrap content file have been removed. Codex now uses native skill discovery via `~/.agents/skills/autodev/` symlink, so the old `use_skill`/`find_skills` CLI tools are no longer needed.
 
 Installation is now just clone + symlink (documented in INSTALL.md). No Node.js dependency required. The old `~/.codex/skills/` path is deprecated.
 
@@ -331,7 +365,7 @@ Fix: hooks.json now calls session-start.sh directly. Claude Code 2.1.x handles t
 
 **Windows: SessionStart hook runs async to prevent terminal freeze (#404, #413, #414, #419)**
 
-The synchronous SessionStart hook blocked the TUI from entering raw mode on Windows, freezing all keyboard input. Running the hook async prevents the freeze while still injecting superpowers context.
+The synchronous SessionStart hook blocked the TUI from entering raw mode on Windows, freezing all keyboard input. Running the hook async prevents the freeze while still injecting autodev context.
 
 **Windows: Fixed O(n^2) `escape_for_json` performance**
 
@@ -339,7 +373,7 @@ The character-by-character loop using `${input:$i:1}` was O(n^2) in bash due to 
 
 **Codex: Fixed Windows/PowerShell invocation (#285, #243)**
 
-- Windows doesn't respect shebangs, so directly invoking the extensionless `superpowers-codex` script triggered an "Open with" dialog. All invocations now prefixed with `node`.
+- Windows doesn't respect shebangs, so directly invoking the extensionless `autodev-codex` script triggered an "Open with" dialog. All invocations now prefixed with `node`.
 - Fixed `~/` path expansion on Windows — PowerShell doesn't expand `~` when passed as an argument to `node`. Changed to `$HOME` which expands correctly in both bash and PowerShell.
 
 **Codex: Fixed path resolution in installer**
@@ -403,9 +437,9 @@ Changes:
 
 **OpenCode: Switched to native skills system**
 
-Superpowers for OpenCode now uses OpenCode's native `skill` tool instead of custom `use_skill`/`find_skills` tools. This is a cleaner integration that works with OpenCode's built-in skill discovery.
+Autonomous Dev Kit for OpenCode now uses OpenCode's native `skill` tool instead of custom `use_skill`/`find_skills` tools. This is a cleaner integration that works with OpenCode's built-in skill discovery.
 
-**Migration required:** Skills must be symlinked to `~/.config/opencode/skills/superpowers/` (see updated installation docs).
+**Migration required:** Skills must be symlinked to `~/.config/opencode/skills/autodev/` (see updated installation docs).
 
 ### Fixes
 
@@ -431,7 +465,7 @@ Fix: hooks.json now calls session-start.sh directly. Claude Code 2.1.x handles t
 
 ### Improvements
 
-**Strengthened using-superpowers skill for explicit skill requests**
+**Strengthened using-autodev skill for explicit skill requests**
 
 Addressed a failure mode where Claude would skip invoking a skill even when the user explicitly requested it by name (e.g., "subagent-driven-development, please"). Claude would think "I know what that means" and start working directly instead of loading the skill.
 
@@ -453,7 +487,7 @@ New test suite in `tests/explicit-skill-requests/` that verifies Claude correctl
 
 Added `disable-model-invocation: true` to all three slash commands (`/brainstorm`, `/execute-plan`, `/write-plan`). Claude can no longer invoke these commands via the Skill tool—they're restricted to manual user invocation only.
 
-The underlying skills (`superpowers:brainstorming`, `superpowers:executing-plans`, `superpowers:writing-plans`) remain available for Claude to invoke autonomously. This change prevents confusion when Claude would invoke a command that just redirects to a skill anyway.
+The underlying skills (`autodev:brainstorming`, `autodev:executing-plans`, `autodev:writing-plans`) remain available for Claude to invoke autonomously. This change prevents confusion when Claude would invoke a command that just redirects to a skill anyway.
 
 ## v4.0.1 (2025-12-23)
 
@@ -461,11 +495,11 @@ The underlying skills (`superpowers:brainstorming`, `superpowers:executing-plans
 
 **Clarified how to access skills in Claude Code**
 
-Fixed a confusing pattern where Claude would invoke a skill via the Skill tool, then try to Read the skill file separately. The `using-superpowers` skill now explicitly states that the Skill tool loads skill content directly—no need to read files.
+Fixed a confusing pattern where Claude would invoke a skill via the Skill tool, then try to Read the skill file separately. The `using-autodev` skill now explicitly states that the Skill tool loads skill content directly—no need to read files.
 
-- Added "How to Access Skills" section to `using-superpowers`
+- Added "How to Access Skills" section to `using-autodev`
 - Changed "read the skill" → "invoke the skill" in instructions
-- Updated slash commands to use fully qualified skill names (e.g., `superpowers:brainstorming`)
+- Updated slash commands to use fully qualified skill names (e.g., `autodev:brainstorming`)
 
 **Added GitHub thread reply guidance to receiving-code-review** (h/t @ralphbean)
 
@@ -537,7 +571,7 @@ Rewrote key skills using DOT/GraphViz flowcharts as the authoritative process de
 
 **The Description Trap** (documented in `writing-skills`): Discovered that skill descriptions override flowchart content when descriptions contain workflow summaries. Claude follows the short description instead of reading the detailed flowchart. Fix: descriptions must be trigger-only ("Use when X") with no process details.
 
-**Skill priority in using-superpowers**
+**Skill priority in using-autodev**
 
 When multiple skills apply, process skills (brainstorming, debugging) now explicitly come before implementation skills. "Build X" triggers brainstorming first, then domain skills.
 
@@ -556,7 +590,7 @@ Description changed to imperative: "You MUST use this before any creative work�
 ### Other Improvements
 
 - **render-graphs.js** - Tool to extract DOT diagrams from skills and render to SVG
-- **Rationalizations table** in using-superpowers - Scannable format including new entries: "I need more context first", "Let me explore first", "This feels productive"
+- **Rationalizations table** in using-autodev - Scannable format including new entries: "I need more context first", "Let me explore first", "This feels productive"
 - **docs/testing.md** - Guide to testing skills with Claude Code integration tests
 
 ---
@@ -578,7 +612,7 @@ Description changed to imperative: "You MUST use this before any creative work�
 
 - **OpenCode Bootstrap Refactor**: Switched from `chat.message` hook to `session.created` event for bootstrap injection
   - Bootstrap now injects at session creation via `session.prompt()` with `noReply: true`
-  - Explicitly tells the model that using-superpowers is already loaded to prevent redundant skill loading
+  - Explicitly tells the model that using-autodev is already loaded to prevent redundant skill loading
   - Consolidated bootstrap content generation into shared `getBootstrapContent()` helper
   - Cleaner single-implementation approach (removed fallback pattern)
 
@@ -593,7 +627,7 @@ Description changed to imperative: "You MUST use this before any creative work�
   - Message insertion pattern for skill persistence across context compaction
   - Automatic context injection via chat.message hook
   - Auto re-injection on session.compacted events
-  - Three-tier skill priority: project > personal > superpowers
+  - Three-tier skill priority: project > personal > autodev
   - Project-local skills support (`.opencode/skills/`)
   - Shared core module (`lib/skills-core.js`) for code reuse with Codex
   - Automated test suite with proper isolation (`tests/opencode/`)
@@ -618,7 +652,7 @@ Description changed to imperative: "You MUST use this before any creative work�
 
 ### Improvements
 
-- Optimized superpowers bootstrap to eliminate redundant skill execution. The `using-superpowers` skill content is now provided directly in session context, with clear guidance to use the Skill tool only for other skills. This reduces overhead and prevents the confusing loop where agents would execute `using-superpowers` manually despite already having the content from session start.
+- Optimized autodev bootstrap to eliminate redundant skill execution. The `using-autodev` skill content is now provided directly in session context, with clear guidance to use the Skill tool only for other skills. This reduces overhead and prevents the confusing loop where agents would execute `using-autodev` manually despite already having the content from session start.
 
 ## v3.4.0 (2025-10-30)
 
@@ -642,10 +676,10 @@ Description changed to imperative: "You MUST use this before any creative work�
 ### New Features
 
 **Experimental Codex Support**
-- Added unified `superpowers-codex` script with bootstrap/use-skill/find-skills commands
+- Added unified `autodev-codex` script with bootstrap/use-skill/find-skills commands
 - Cross-platform Node.js implementation (works on Windows, macOS, Linux)
-- Namespaced skills: `superpowers:skill-name` for superpowers skills, `skill-name` for personal
-- Personal skills override superpowers skills when names match
+- Namespaced skills: `autodev:skill-name` for autodev skills, `skill-name` for personal
+- Personal skills override autodev skills when names match
 - Clean skill display: shows name/description without raw frontmatter
 - Helpful context: shows supporting files directory for each skill
 - Tool mapping for Codex: TodoWrite→update_plan, subagents→manual fallback, etc.
@@ -656,20 +690,20 @@ Description changed to imperative: "You MUST use this before any creative work�
 - Single unified script instead of separate tools
 - Tool substitution system for Codex-specific equivalents
 - Simplified subagent handling (manual work instead of delegation)
-- Updated terminology: "Superpowers skills" instead of "Core skills"
+- Updated terminology: "Autonomous Dev Kit skills" instead of "Core skills"
 
 ### Files Added
 - `.codex/INSTALL.md` - Installation guide for Codex users
-- `.codex/superpowers-bootstrap.md` - Bootstrap instructions with Codex adaptations
-- `.codex/superpowers-codex` - Unified Node.js executable with all functionality
+- `.codex/autodev-bootstrap.md` - Bootstrap instructions with Codex adaptations
+- `.codex/autodev-codex` - Unified Node.js executable with all functionality
 
-**Note:** Codex support is experimental. The integration provides core superpowers functionality but may require refinement based on user feedback.
+**Note:** Codex support is experimental. The integration provides core autodev functionality but may require refinement based on user feedback.
 
 ## v3.2.3 (2025-10-23)
 
 ### Improvements
 
-**Updated using-superpowers skill to use Skill tool instead of Read tool**
+**Updated using-autodev skill to use Skill tool instead of Read tool**
 - Changed skill invocation instructions from Read tool to Skill tool
 - Updated description: "using Read tool" → "using Skill tool"
 - Updated step 3: "Use the Read tool" → "Use the Skill tool to read and run"
@@ -678,13 +712,13 @@ Description changed to imperative: "You MUST use this before any creative work�
 The Skill tool is the proper mechanism for invoking skills in Claude Code. This update corrects the bootstrap instructions to guide agents toward the correct tool.
 
 ### Files Changed
-- Updated: `skills/using-superpowers/SKILL.md` - Changed tool references from Read to Skill
+- Updated: `skills/using-autodev/SKILL.md` - Changed tool references from Read to Skill
 
 ## v3.2.2 (2025-10-21)
 
 ### Improvements
 
-**Strengthened using-superpowers skill against agent rationalization**
+**Strengthened using-autodev skill against agent rationalization**
 - Added EXTREMELY-IMPORTANT block with absolute language about mandatory skill checking
   - "If even 1% chance a skill applies, you MUST read it"
   - "You do not have a choice. You cannot rationalize your way out."
@@ -700,23 +734,23 @@ The Skill tool is the proper mechanism for invoking skills in Claude Code. This 
 These changes address observed agent behavior where they rationalize around skill usage despite clear instructions. The forceful language and pre-emptive counter-arguments aim to make non-compliance harder.
 
 ### Files Changed
-- Updated: `skills/using-superpowers/SKILL.md` - Added three layers of enforcement to prevent skill-skipping rationalization
+- Updated: `skills/using-autodev/SKILL.md` - Added three layers of enforcement to prevent skill-skipping rationalization
 
 ## v3.2.1 (2025-10-20)
 
 ### New Features
 
 **Code reviewer agent now included in plugin**
-- Added `superpowers:code-reviewer` agent to plugin's `agents/` directory
+- Added `autodev:code-reviewer` agent to plugin's `agents/` directory
 - Agent provides systematic code review against plans and coding standards
 - Previously required users to have personal agent configuration
-- All skill references updated to use namespaced `superpowers:code-reviewer`
+- All skill references updated to use namespaced `autodev:code-reviewer`
 - Fixes #55
 
 ### Files Changed
 - New: `agents/code-reviewer.md` - Agent definition with review checklist and output format
-- Updated: `skills/requesting-code-review/SKILL.md` - References to `superpowers:code-reviewer`
-- Updated: `skills/subagent-driven-development/SKILL.md` - References to `superpowers:code-reviewer`
+- Updated: `skills/requesting-code-review/SKILL.md` - References to `autodev:code-reviewer`
+- Updated: `skills/subagent-driven-development/SKILL.md` - References to `autodev:code-reviewer`
 
 ## v3.2.0 (2025-10-18)
 
@@ -732,8 +766,8 @@ These changes address observed agent behavior where they rationalize around skil
 ### Breaking Changes
 
 **Skill reference namespace standardization**
-- All internal skill references now use `superpowers:` namespace prefix
-- Updated format: `superpowers:test-driven-development` (previously just `test-driven-development`)
+- All internal skill references now use `autodev:` namespace prefix
+- Updated format: `autodev:test-driven-development` (previously just `test-driven-development`)
 - Affects all REQUIRED SUB-SKILL, RECOMMENDED SUB-SKILL, and REQUIRED BACKGROUND references
 - Aligns with how skills are invoked using the Skill tool
 - Files updated: brainstorming, executing-plans, subagent-driven-development, systematic-debugging, testing-skills-with-subagents, writing-plans, writing-skills
@@ -749,7 +783,7 @@ These changes address observed agent behavior where they rationalize around skil
 
 ### Bug Fixes
 
-- **Fixed command syntax in README** (#44) - Updated all command references to use correct namespaced syntax (`/superpowers:brainstorm` instead of `/brainstorm`). Plugin-provided commands are automatically namespaced by Claude Code to avoid conflicts between plugins.
+- **Fixed command syntax in README** (#44) - Updated all command references to use correct namespaced syntax (`/autodev:brainstorm` instead of `/brainstorm`). Plugin-provided commands are automatically namespaced by Claude Code to avoid conflicts between plugins.
 
 ## v3.1.0 (2025-10-17)
 
@@ -832,13 +866,13 @@ We now use Anthropic's first-party skills system!
 
 ---
 
-# Superpowers v2.0.0 Release Notes
+# Autonomous Dev Kit v2.0.0 Release Notes
 
 ## Overview
 
-Superpowers v2.0 makes skills more accessible, maintainable, and community-driven through a major architectural shift.
+Autonomous Dev Kit v2.0 makes skills more accessible, maintainable, and community-driven through a major architectural shift.
 
-The headline change is **skills repository separation**: all skills, scripts, and documentation have moved from the plugin into a dedicated repository ([obra/superpowers-skills](https://github.com/obra/superpowers-skills)). This transforms superpowers from a monolithic plugin into a lightweight shim that manages a local clone of the skills repository. Skills auto-update on session start. Users fork and contribute improvements via standard git workflows. The skills library versions independently from the plugin.
+The headline change is **skills repository separation**: all skills, scripts, and documentation have moved from the plugin into a dedicated repository ([GoCodeAlone/autonomous-dev-kit-skills](https://github.com/GoCodeAlone/autonomous-dev-kit-skills)). This transforms autodev from a monolithic plugin into a lightweight shim that manages a local clone of the skills repository. Skills auto-update on session start. Users fork and contribute improvements via standard git workflows. The skills library versions independently from the plugin.
 
 Beyond infrastructure, this release adds nine new skills focused on problem-solving, research, and architecture. We rewrote the core **using-skills** documentation with imperative tone and clearer structure, making it easier for Claude to understand when and how to use skills. **find-skills** now outputs paths you can paste directly into the Read tool, eliminating friction in the skills discovery workflow.
 
@@ -848,11 +882,11 @@ Users experience seamless operation: the plugin handles cloning, forking, and up
 
 ### Skills Repository Separation
 
-**The biggest change:** Skills no longer live in the plugin. They've been moved to a separate repository at [obra/superpowers-skills](https://github.com/obra/superpowers-skills).
+**The biggest change:** Skills no longer live in the plugin. They've been moved to a separate repository at [GoCodeAlone/autonomous-dev-kit-skills](https://github.com/GoCodeAlone/autonomous-dev-kit-skills).
 
 **What this means for you:**
 
-- **First install:** Plugin automatically clones skills to `~/.config/superpowers/skills/`
+- **First install:** Plugin automatically clones skills to `~/.config/autodev/skills/`
 - **Forking:** During setup, you'll be offered the option to fork the skills repo (if `gh` is installed)
 - **Updates:** Skills auto-update on session start (fast-forward when possible)
 - **Contributing:** Work on branches, commit locally, submit PRs to upstream
@@ -861,21 +895,21 @@ Users experience seamless operation: the plugin handles cloning, forking, and up
 **Migration:**
 
 If you have an existing installation:
-1. Your old `~/.config/superpowers/.git` will be backed up to `~/.config/superpowers/.git.bak`
-2. Old skills will be backed up to `~/.config/superpowers/skills.bak`
-3. Fresh clone of obra/superpowers-skills will be created at `~/.config/superpowers/skills/`
+1. Your old `~/.config/autodev/.git` will be backed up to `~/.config/autodev/.git.bak`
+2. Old skills will be backed up to `~/.config/autodev/skills.bak`
+3. Fresh clone of GoCodeAlone/autonomous-dev-kit-skills will be created at `~/.config/autodev/skills/`
 
 ### Removed Features
 
-- **Personal superpowers overlay system** - Replaced with git branch workflow
-- **setup-personal-superpowers hook** - Replaced by initialize-skills.sh
+- **Personal autodev overlay system** - Replaced with git branch workflow
+- **setup-personal-autodev hook** - Replaced by initialize-skills.sh
 
 ## New Features
 
 ### Skills Repository Infrastructure
 
 **Automatic Clone & Setup** (`lib/initialize-skills.sh`)
-- Clones obra/superpowers-skills on first run
+- Clones GoCodeAlone/autonomous-dev-kit-skills on first run
 - Offers fork creation if GitHub CLI is installed
 - Sets up upstream/origin remotes correctly
 - Handles migration from old installation
@@ -946,21 +980,21 @@ If you have an existing installation:
 - Moved "skills behind" warning to end of output
 
 **Environment Variables**
-- `SUPERPOWERS_SKILLS_ROOT` set to `~/.config/superpowers/skills`
+- `SUPERPOWERS_SKILLS_ROOT` set to `~/.config/autodev/skills`
 - Used consistently throughout all paths
 
 ## Bug Fixes
 
 - Fixed duplicate upstream remote addition when forking
 - Fixed find-skills double "skills/" prefix in output
-- Removed obsolete setup-personal-superpowers call from session-start
+- Removed obsolete setup-personal-autodev call from session-start
 - Fixed path references throughout hooks and commands
 
 ## Documentation
 
 ### README
 - Updated for new skills repository architecture
-- Prominent link to superpowers-skills repo
+- Prominent link to autodev-skills repo
 - Updated auto-update description
 - Fixed skill names and references
 - Updated Meta skills list
@@ -980,12 +1014,12 @@ If you have an existing installation:
 - `.claude-plugin/marketplace.json` - Local testing config
 
 **Removed:**
-- `skills/` directory (82 files) - Now in obra/superpowers-skills
-- `scripts/` directory - Now in obra/superpowers-skills/skills/using-skills/
-- `hooks/setup-personal-superpowers.sh` - Obsolete
+- `skills/` directory (82 files) - Now in GoCodeAlone/autonomous-dev-kit-skills
+- `scripts/` directory - Now in GoCodeAlone/autonomous-dev-kit-skills/skills/using-skills/
+- `hooks/setup-personal-autodev.sh` - Obsolete
 
 **Modified:**
-- `hooks/session-start.sh` - Use skills from ~/.config/superpowers/skills
+- `hooks/session-start.sh` - Use skills from ~/.config/autodev/skills
 - `commands/brainstorm.md` - Updated paths to SUPERPOWERS_SKILLS_ROOT
 - `commands/write-plan.md` - Updated paths to SUPERPOWERS_SKILLS_ROOT
 - `commands/execute-plan.md` - Updated paths to SUPERPOWERS_SKILLS_ROOT
@@ -996,7 +1030,7 @@ If you have an existing installation:
 This release includes:
 - 20+ commits for skills repository separation
 - PR #1: Amplifier-inspired problem-solving and research skills
-- PR #2: Personal superpowers overlay system (later replaced)
+- PR #2: Personal autodev overlay system (later replaced)
 - Multiple skill refinements and documentation improvements
 
 ## Upgrade Instructions
@@ -1005,8 +1039,8 @@ This release includes:
 
 ```bash
 # In Claude Code
-/plugin marketplace add obra/superpowers-marketplace
-/plugin install superpowers@superpowers-marketplace
+/plugin marketplace add GoCodeAlone/claude-marketplace
+/plugin install autodev@claude-marketplace
 ```
 
 The plugin handles everything automatically.
@@ -1015,12 +1049,12 @@ The plugin handles everything automatically.
 
 1. **Backup your personal skills** (if you have any):
    ```bash
-   cp -r ~/.config/superpowers/skills ~/superpowers-skills-backup
+   cp -r ~/.config/autodev/skills ~/autodev-skills-backup
    ```
 
 2. **Update the plugin:**
    ```bash
-   /plugin update superpowers
+   /plugin update autodev
    ```
 
 3. **On next session start:**
@@ -1044,7 +1078,7 @@ The plugin handles everything automatically.
 
 ### For Contributors
 
-- Skills repository is now at https://github.com/obra/superpowers-skills
+- Skills repository is now at https://github.com/GoCodeAlone/autonomous-dev-kit-skills
 - Fork → Branch → PR workflow
 - See skills/meta/writing-skills/SKILL.md for TDD approach to documentation
 
@@ -1060,6 +1094,6 @@ None at this time.
 
 ---
 
-**Full Changelog:** https://github.com/obra/superpowers/compare/dd013f6...main
-**Skills Repository:** https://github.com/obra/superpowers-skills
-**Issues:** https://github.com/obra/superpowers/issues
+**Full Changelog:** https://github.com/GoCodeAlone/autonomous-dev-kit/compare/dd013f6...main
+**Skills Repository:** https://github.com/GoCodeAlone/autonomous-dev-kit-skills
+**Issues:** https://github.com/GoCodeAlone/autonomous-dev-kit/issues

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # hooks/completion-claim-guard
 # Stop hook: blocks the agent from declaring success while a locked plan's
-# manifest hash fails verification — which indicates the plan was tampered with
-# directly (bypassing the unlock path) or the scope-lock file was corrupted.
+# manifest hash fails verification — which indicates the manifest was changed
+# without the amendment path or the scope-lock file was corrupted.
 #
 # Also blocks if the plan-scope-check script reports structural problems with
 # any locked plan's manifest (inconsistent PR count, missing task IDs, etc.).
@@ -31,12 +31,27 @@ cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
 # When true the agent was already told to continue once; let the stop proceed.
 stop_hook_active=$(printf '%s' "$hook_input" | jq -r '.stop_hook_active // false' 2>/dev/null || echo "false")
 [ "$stop_hook_active" = "true" ] && exit 0
+last_assistant_message=$(printf '%s' "$hook_input" | jq -r '.last_assistant_message // .assistant_message // empty' 2>/dev/null || true)
+transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+if [ -z "$last_assistant_message" ] && [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
+    last_assistant_message=$(jq -rs '
+        map(select((.type // "") == "assistant")) |
+        (last // empty) as $last |
+        ($last.message.content // $last.content // "") |
+        if type == "string" then .
+        elif type == "array" then ([.[] | select((.type // "") == "text") | (.text // "")] | join("\n"))
+        else "" end
+    ' "$transcript_path" 2>/dev/null || true)
+fi
 
 block() {
     local reason="$1"
-    printf '{"decision":"block","reason":%s}\n' \
-        "$(printf '%s' "$reason" | jq -Rs .)"
-    exit 2
+    if command -v jq >/dev/null 2>&1; then
+        jq -n --arg reason "$reason" '{decision:"block",reason:$reason}'
+    else
+        printf '%s\n' "$reason" >&2
+    fi
+    exit 0
 }
 
 # ── Find locked plans ────────────────────────────────────────────────────────
@@ -59,7 +74,7 @@ while IFS= read -r plan; do
     # ── Hash verification: was the manifest edited behind the lock? ──────────
     if [ -x "$checker" ]; then
         if ! bash "$checker" --verify-lock "$plan" >/dev/null 2>&1; then
-            failures="${failures}  • ${plan_name}: Scope Manifest hash does not match the lock file (.scope-lock). The manifest was edited after it was locked, bypassing the unlock path.\n"
+            failures="${failures}  • ${plan_name}: Scope Manifest hash does not match the lock file (.scope-lock). The manifest was edited after it was locked without the amendment path.\n"
         fi
     fi
 
@@ -71,16 +86,52 @@ while IFS= read -r plan; do
     fi
 done <<< "$locked_plans"
 
-[ -z "$failures" ] && exit 0
+if [ -z "$failures" ]; then
+    completionish="false"
+    if printf '%s' "$last_assistant_message" | grep -qiE '\b(done|complete|completed|finished|implemented|ready|all set|final|pull request|PR created|phase complete|task complete)\b'; then
+        completionish="true"
+    fi
+
+    waiting_for_user="false"
+    if printf '%s' "$last_assistant_message" | grep -qiE '(blocked|blocker|waiting for|need(s)? (your|user|human) (approval|input|confirmation)|deploy to production|production deploy|destructive|delete production|drop production)'; then
+        waiting_for_user="true"
+    fi
+
+    if [ "$completionish" = "true" ] && [ "$waiting_for_user" != "true" ]; then
+        first_plan=$(printf '%s\n' "$locked_plans" | head -1)
+        first_plan_name=$(basename "$first_plan")
+        progress_file="${cwd_dir}/.autodev/state/phase-progress.jsonl"
+        block "Completion checkpoint — locked plan still in effect: ${first_plan_name}
+
+Before stopping, decide whether this is:
+  1. A phase/task completion inside the locked design, or
+  2. Completion of the entire locked design.
+
+If this is only a phase/task completion:
+  - Append one compact JSONL row to ${progress_file}: {\"ts\":\"<UTC>\",\"ev\":\"phase\",\"pl\":\"${first_plan_name}\",\"ph\":\"<completed phase/task>\",\"st\":\"done\",\"e\":\"<verification evidence>\",\"nx\":\"<next phase/task>\"}
+  - Continue automatically into the next phase/task from the Scope Manifest.
+
+Only stop if one of these is true:
+  - The entire locked design is complete and verified.
+  - There is a hard blocker that requires human input.
+  - The next action is a production deploy or destructive production change without already-recorded human approval.
+
+Use autodev:verification-before-completion before any completion claim."
+    fi
+
+    exit 0
+fi
 
 block "Completion blocked — scope-manifest integrity problems detected before stop:
 
 ${failures}
 Resolve these before declaring done:
-  1. If the manifest was edited directly, go through the unlock path:
+  1. If the manifest was edited directly, go through the amendment path:
      recording-decisions → update manifest → re-run alignment-check.
   2. If the structural check failed, fix the manifest to match the plan body.
   3. After resolving, run: tests/plan-scope-check.sh --verify-lock <plan>
      and confirm it exits 0 before stopping.
 
-See skills/scope-lock/SKILL.md for the unlock path."
+See skills/scope-lock/SKILL.md for the amendment path."
+
+# Unreachable: block exits.
