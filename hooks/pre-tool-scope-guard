@@ -48,20 +48,39 @@ block() {
     exit 2
 }
 
+# Recognized helper script names that update session-lock state. Pattern-matched
+# against Bash tool commands by record_session_lock so each helper script never
+# needs to know the current session_key itself.
+#
+# Helpers MUST emit their bare name on stdout so a future maintainer can audit
+# which Bash invocations matter from either end. See:
+#   hooks/scope-lock-apply, hooks/scope-lock-claim
+SESSION_LOCK_RECOGNIZED='scope-lock-apply|scope-lock-claim'
+
 record_session_lock() {
     local cmd="$1"
     [ -n "$session_key" ] || return 0
-    printf '%s' "$cmd" | grep -q 'scope-lock-apply' || return 0
+    printf '%s' "$cmd" | grep -qE "(${SESSION_LOCK_RECOGNIZED})" || return 0
 
     local plan_arg=""
     plan_arg=$(printf '%s' "$cmd" \
-        | sed -nE 's/.*scope-lock-apply[[:space:]]+"?([^" ;]+)"?.*/\1/p' \
+        | sed -nE "s/.*(${SESSION_LOCK_RECOGNIZED})[[:space:]]+\"?([^\" ;]+)\"?.*/\2/p" \
         | head -1 || true)
     [ -n "$plan_arg" ] || return 0
 
     local state_dir="${cwd_dir}/.claude/autodev-state"
     mkdir -p "$state_dir" 2>/dev/null || return 0
     local state_file="${state_dir}/session-locks.jsonl"
+
+    # Dedupe: skip if the (session, plan) row already exists.
+    if [ -f "$state_file" ]; then
+        if jq -e --arg s "$session_key" --arg pl "$plan_arg" \
+            'select(.ev=="session-lock" and .session==$s and .pl==$pl)' \
+            "$state_file" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
     local ts
     ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     jq -nc \
@@ -92,13 +111,13 @@ find_locked_plans() {
                     *) resolved="${cwd_dir}/${plan}" ;;
                 esac
                 [ -f "$resolved" ] || continue
-                grep -q '\*\*Status:\*\* Locked' "$resolved" 2>/dev/null || continue
+                grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$resolved" 2>/dev/null || continue
                 printf '%s\n' "$resolved"
             done
         return 0
     fi
 
-    grep -rl '\*\*Status:\*\* Locked' "$plans_dir" 2>/dev/null \
+    grep -rlE '^\*\*Status:\*\*[[:space:]]+Locked' "$plans_dir" 2>/dev/null \
         | grep '\.md$' | grep -v '\.scope-lock' || true
 }
 

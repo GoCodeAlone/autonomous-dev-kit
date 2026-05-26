@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# hooks/scope-lock-abandon
+# Abandon a locked plan that will not be completed.
+#
+# Sibling to hooks/scope-lock-complete (ADR 0001). Distinct from complete:
+#   - Does NOT verify the manifest hash. Drift is expected for abandoned work.
+#   - Status flips to "Abandoned <UTC> - <reason>".
+#   - Requires --reason (non-empty); sanitized to single line, capped at 200
+#     chars, with literal "**" replaced by "__" so the markdown bold around
+#     the Status: prefix cannot be broken.
+#   - Appends phase-progress.jsonl with st:"abandoned" + reason field.
+#   - Does NOT write an ADR.
+#
+# Usage:
+#   scope-lock-abandon <plan-path> --reason "<reason>"
+
+set -euo pipefail
+
+[ "${SUPERPOWERS_HOOKS_DISABLE:-}" = "1" ] && exit 0
+command -v jq >/dev/null 2>&1 || {
+    printf 'scope-lock-abandon: jq is required for state cleanup\n' >&2
+    exit 2
+}
+
+plan="${1:-}"
+[ -n "$plan" ] || {
+    printf 'scope-lock-abandon: missing plan path\n' >&2
+    exit 2
+}
+shift || true
+
+reason=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --reason)
+            shift
+            reason="${1:-}"
+            if [ -z "$reason" ] || [ "${reason#--}" != "$reason" ]; then
+                printf 'scope-lock-abandon: --reason requires a non-empty value\n' >&2
+                exit 2
+            fi
+            ;;
+        *)
+            printf 'scope-lock-abandon: unknown argument: %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+    shift || true
+done
+
+[ -n "$reason" ] || { printf 'scope-lock-abandon: --reason is required\n' >&2; exit 2; }
+
+# Sanitize: collapse all whitespace runs to single spaces, replace ** with __,
+# truncate to 200 chars.
+sanitized_reason=$(printf '%s' "$reason" | tr -s '\n\t ' ' ' | sed 's/\*\*/__/g' | cut -c1-200)
+
+canonical_path_from_base() {
+    local base="$1" ref="$2" candidate
+    case "$ref" in
+        /*) candidate="$ref" ;;
+        */*) candidate="${base}/${ref}" ;;
+        *) candidate="${base}/docs/plans/${ref}" ;;
+    esac
+    local dir
+    dir=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P) || return 1
+    printf '%s/%s\n' "$dir" "$(basename "$candidate")"
+}
+
+plan_abs=$(canonical_path_from_base "$PWD" "$plan") || {
+    printf 'scope-lock-abandon: unable to resolve plan path: %s\n' "$plan" >&2; exit 2; }
+[ -f "$plan_abs" ] || { printf 'scope-lock-abandon: plan not found: %s\n' "$plan_abs" >&2; exit 2; }
+grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$plan_abs" || {
+    printf 'scope-lock-abandon: plan is not in Locked status: %s\n' "$plan_abs" >&2; exit 2; }
+
+plan_dir=$(cd "$(dirname "$plan_abs")" && pwd)
+repo_root=$(cd "${plan_dir}/../.." && pwd)
+plan_name=$(basename "$plan_abs")
+plan_rel="docs/plans/${plan_name}"
+lock_file="${plan_abs}.scope-lock"
+
+session_locks_file="${repo_root}/.claude/autodev-state/session-locks.jsonl"
+in_progress_file="${repo_root}/.claude/autodev-state/in-progress.jsonl"
+progress_dir="${repo_root}/.autodev/state"
+progress_file="${progress_dir}/phase-progress.jsonl"
+
+ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+plan_tmp=$(mktemp "${plan_abs}.abandon.XXXXXX")
+trap 'rm -f "$plan_tmp"' EXIT
+
+awk -v ts="$ts" -v r="$sanitized_reason" '
+    !done && /^\*\*Status:\*\*[[:space:]]+Locked/ {
+        print "**Status:** Abandoned " ts " - " r
+        done = 1
+        next
+    }
+    { print }
+' "$plan_abs" > "$plan_tmp"
+
+prune_jsonl() {
+    local file="$1" tmp
+    [ -f "$file" ] || return 0
+    tmp=$(mktemp "${file}.abandon.XXXXXX")
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ -n "$line" ] || continue
+        pl=$(printf '%s' "$line" | jq -r '.pl // empty' 2>/dev/null || true) || { rm -f "$tmp"; return 1; }
+        if [ -n "$pl" ]; then
+            resolved=$(canonical_path_from_base "$repo_root" "$pl" 2>/dev/null || true)
+            [ "$resolved" = "$plan_abs" ] && continue
+        fi
+        printf '%s\n' "$line" >> "$tmp"
+    done < "$file"
+    mv "$tmp" "$file"
+}
+
+mkdir -p "$progress_dir"
+mv "$plan_tmp" "$plan_abs"
+trap - EXIT
+rm -f "$lock_file"
+prune_jsonl "$session_locks_file" || true
+prune_jsonl "$in_progress_file" || true
+jq -nc \
+    --arg ts "$ts" --arg pl "$plan_name" --arg r "$sanitized_reason" \
+    '{ts:$ts,ev:"plan",pl:$pl,st:"abandoned",reason:$r}' \
+    >> "$progress_file"
+
+printf 'scope-lock-abandon: abandoned %s (reason: %s)\n' "$plan_rel" "$sanitized_reason"

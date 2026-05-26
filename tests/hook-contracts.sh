@@ -42,6 +42,29 @@ run_hook_wrapper() {
     hooks/run-hook.cmd "$hook" >"$stdout_file" 2>"$stderr_file" <<<"$payload"
 }
 
+# emit_locked_fixture <plan-abs-path> <name>
+#   Writes a minimal-but-valid locked plan to <plan-abs-path>, then runs
+#   hooks/scope-lock-apply against it from the repo root. The plan body is
+#   produced with printf (not a heredoc) so this file does not itself contain
+#   column-0 occurrences of "## Scope Manifest" or "**Status:** Locked" that
+#   would trip the project's own plan-scope-check.sh / nag hooks when run
+#   against this repo.
+emit_locked_fixture() {
+  local path="$1" name="$2"
+  printf '# %s Plan\n\n%s\n\n**PR Count:** 1\n**Tasks:** 1\n**Out of scope:**\n- (none)\n\n**PR Grouping:**\n\n| PR # | Title | Tasks | Branch |\n|------|-------|-------|--------|\n| 1 | %s | Task 1 | feat/%s |\n\n%s\n\n### Task 1: %s\n' \
+    "$name" "## Scope Manifest" "$name" "$name" "**Status:** Locked 2026-05-26T00:00:00Z" "$name" > "$path"
+  bash "$REPO_ROOT/hooks/scope-lock-apply" "$path" >/dev/null
+}
+
+# emit_draft_fixture <plan-abs-path> <name>
+#   Same shape but Status is Draft; the body literally quotes the locked status
+#   string in prose so we can regression-test the anchored-grep fix.
+emit_draft_fixture() {
+  local path="$1" name="$2"
+  printf '# %s Plan\n\n%s\n\n**PR Count:** 1\n**Tasks:** 1\n**Out of scope:**\n- (none)\n\n**PR Grouping:**\n\n| PR # | Title | Tasks | Branch |\n|------|-------|-------|--------|\n| 1 | %s | Task 1 | feat/%s |\n\n**Status:** Draft\n\nProse mention: %s 2026-05-26T00:00:00Z\n\n### Task 1: %s\n' \
+    "$name" "## Scope Manifest" "$name" "$name" "**Status:** Locked" "$name"  > "$path"
+}
+
 assert_hook_context_json() {
   local name="$1"
   local event="$2"
@@ -165,43 +188,6 @@ PLAN
     return
   fi
   pass "prompt-strict-interpretation: ignores ambiguous workspace locks when session has no lock"
-}
-
-test_prompt_strict_falls_back_to_single_workspace_lock() {
-  local tmp transcript output
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
-  transcript="$tmp/session.jsonl"
-  touch "$transcript"
-  mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/active.md" <<'PLAN'
-# Active Plan
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | Active | Task 1 | feat/active |
-
-**Status:** Locked 2026-05-25T00:00:00Z
-
-### Task 1: Active
-PLAN
-  bash hooks/scope-lock-apply "$tmp/docs/plans/active.md" >/dev/null
-
-  output="$(run_hook prompt-strict-interpretation '{"prompt":"continue autonomously","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
-  if ! printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("active.md")' >/dev/null; then
-    fail "prompt-strict-interpretation: expected single workspace lock fallback, got: ${output}"
-    return
-  fi
-  pass "prompt-strict-interpretation: falls back to single workspace lock"
 }
 
 test_prompt_strict_uses_session_locked_plan_only() {
@@ -773,45 +759,6 @@ PLAN
   pass "completion-claim-guard: ignores ambiguous workspace locks when session has no lock"
 }
 
-test_completion_falls_back_to_single_workspace_lock() {
-  local tmp transcript output
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
-  transcript="$tmp/session.jsonl"
-  touch "$transcript"
-  mkdir -p "$tmp/docs/plans" "$tmp/tests"
-  cat >"$tmp/docs/plans/active.md" <<'PLAN'
-# Active Plan
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | Active | Task 1 | feat/active |
-
-**Status:** Locked 2026-05-25T00:00:00Z
-
-### Task 1: Active
-PLAN
-  cp tests/plan-scope-check.sh "$tmp/tests/plan-scope-check.sh"
-  chmod +x "$tmp/tests/plan-scope-check.sh"
-  bash hooks/scope-lock-apply "$tmp/docs/plans/active.md" >/dev/null
-
-  output="$(run_hook completion-claim-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false,"last_assistant_message":"Task complete."}')"
-  if ! printf '%s' "$output" | grep -q 'Completion checkpoint'; then
-    fail "completion-claim-guard: expected single workspace lock fallback to block completion, got: ${output}"
-    return
-  fi
-  pass "completion-claim-guard: falls back to single workspace lock"
-}
-
 test_completion_uses_session_locked_plan_only() {
   local tmp transcript output
   tmp="$(mktemp -d)"
@@ -972,6 +919,405 @@ PLAN
   pass "subagent-scope-guard: allows non-manifest locked plan backports"
 }
 
+test_pretool_ignores_prose_mention_of_locked_status() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state" "$tmp/tests"
+  cp "$REPO_ROOT/tests/plan-scope-check.sh" "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
+  output="$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push origin feat/x"},"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}' \
+    | run_hook pre-tool-scope-guard 2>&1 || true)"
+  if printf '%s' "$output" | grep -q '"decision":"block"'; then
+    fail "pre-tool-scope-guard: prose mention of Locked status falsely matched, output: ${output}"
+    return
+  fi
+  pass "pre-tool-scope-guard: anchored grep ignores prose mention of Locked status"
+}
+
+test_prompt_strict_ignores_prose_mention_of_locked_status() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans"
+  emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
+  output="$(run_hook prompt-strict-interpretation '{"prompt":"go ahead and create a PR","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
+  if [ -n "$output" ]; then
+    fail "prompt-strict-interpretation: prose mention of Locked status triggered nag, output: ${output}"
+    return
+  fi
+  pass "prompt-strict-interpretation: anchored grep ignores prose mention of Locked status"
+}
+
+test_pre_compact_ignores_prose_mention_of_locked_status() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans"
+  emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
+  output="$(run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
+  if [ -n "$output" ]; then
+    fail "pre-compact-snapshot: prose mention of Locked status triggered snapshot, output: ${output}"
+    return
+  fi
+  pass "pre-compact-snapshot: anchored grep ignores prose mention of Locked status"
+}
+
+test_completion_ignores_prose_mention_of_locked_status() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/tests"
+  cp "$REPO_ROOT/tests/plan-scope-check.sh" "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
+  output="$(run_hook completion-claim-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false,"last_assistant_message":"Task complete."}' 2>&1 || true)"
+  if printf '%s' "$output" | grep -q '"decision":"block"'; then
+    fail "completion-claim-guard: prose mention of Locked status falsely matched, output: ${output}"
+    return
+  fi
+  pass "completion-claim-guard: anchored grep ignores prose mention of Locked status"
+}
+
+test_subagent_scope_guard_ignores_unattributed_workspace_lock() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/tests"
+  cp "$REPO_ROOT/tests/plan-scope-check.sh" "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  emit_locked_fixture "$tmp/docs/plans/unrelated.md" "unrelated"
+  # Drift the manifest so verify-lock would fail if invoked.
+  awk '/^\*\*Tasks:\*\* 1/ {print; print "**Drift:** yes"; next} {print}' \
+    "$tmp/docs/plans/unrelated.md" > "$tmp/docs/plans/unrelated.md.tmp" \
+    && mv "$tmp/docs/plans/unrelated.md.tmp" "$tmp/docs/plans/unrelated.md"
+  output="$(run_hook subagent-scope-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false}' 2>&1 || true)"
+  if printf '%s' "$output" | grep -q '"decision":"block"'; then
+    fail "subagent-scope-guard: blocked stop for unattributed workspace lock, output: ${output}"
+    return
+  fi
+  pass "subagent-scope-guard: ignores unattributed workspace lock"
+}
+
+test_subagent_scope_guard_blocks_attributed_drift() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state" "$tmp/tests"
+  cp "$REPO_ROOT/tests/plan-scope-check.sh" "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  emit_locked_fixture "$tmp/docs/plans/active.md" "active"
+  jq -nc --arg s "session.jsonl" --arg pl "docs/plans/active.md" \
+    '{ev:"session-lock",session:$s,pl:$pl}' \
+    > "$tmp/.claude/autodev-state/session-locks.jsonl"
+  # Drift inside the manifest section so verify-lock fails.
+  awk '/^\*\*Tasks:\*\* 1/ {print; print "**Drift:** yes"; next} {print}' \
+    "$tmp/docs/plans/active.md" > "$tmp/docs/plans/active.md.tmp" \
+    && mv "$tmp/docs/plans/active.md.tmp" "$tmp/docs/plans/active.md"
+  output="$(run_hook subagent-scope-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false}' 2>&1 || true)"
+  if ! printf '%s' "$output" | grep -q '"decision":"block"'; then
+    fail "subagent-scope-guard: did NOT block for attributed drift, output: ${output}"
+    return
+  fi
+  pass "subagent-scope-guard: blocks on attributed drift"
+}
+
+test_prompt_strict_ignores_single_workspace_lock_when_session_has_no_lock() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans"
+  emit_locked_fixture "$tmp/docs/plans/active.md" "active"
+  output="$(run_hook prompt-strict-interpretation '{"prompt":"continue autonomously","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
+  if [ -n "$output" ]; then
+    fail "prompt-strict-interpretation: single workspace lock falsely triggered fallback, output: ${output}"
+    return
+  fi
+  pass "prompt-strict-interpretation: no workspace fallback when session has no lock"
+}
+
+test_pre_compact_ignores_single_workspace_lock_when_session_has_no_lock() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans"
+  emit_locked_fixture "$tmp/docs/plans/active.md" "active"
+  output="$(run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
+  if [ -n "$output" ]; then
+    fail "pre-compact-snapshot: single workspace lock falsely triggered fallback, output: ${output}"
+    return
+  fi
+  pass "pre-compact-snapshot: no workspace fallback when session has no lock"
+}
+
+test_completion_ignores_single_workspace_lock_when_session_has_no_lock() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/tests"
+  cp "$REPO_ROOT/tests/plan-scope-check.sh" "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  emit_locked_fixture "$tmp/docs/plans/active.md" "active"
+  output="$(run_hook completion-claim-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false,"last_assistant_message":"Task complete."}' 2>&1 || true)"
+  if printf '%s' "$output" | grep -q '"decision":"block"'; then
+    fail "completion-claim-guard: single workspace lock falsely triggered fallback, output: ${output}"
+    return
+  fi
+  pass "completion-claim-guard: no workspace fallback when session has no lock"
+}
+
+test_scope_lock_claim_writes_session_attribution() {
+  local tmp transcript record_payload state_file
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  record_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-claim docs/plans/p.md" \
+    --arg cwd "$tmp" --arg tp "$transcript" \
+    '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
+  run_hook pre-tool-scope-guard "$record_payload" >/dev/null 2>&1 || true
+  state_file="$tmp/.claude/autodev-state/session-locks.jsonl"
+  if [ ! -s "$state_file" ]; then
+    fail "scope-lock-claim: pre-tool-scope-guard did not write session-locks.jsonl"
+    return
+  fi
+  if ! jq -e --arg s "session.jsonl" --arg pl "docs/plans/p.md" \
+      'select(.ev=="session-lock" and .session==$s and .pl==$pl)' "$state_file" >/dev/null; then
+    fail "scope-lock-claim: row missing for (session,plan), file: $(cat "$state_file")"
+    return
+  fi
+  pass "scope-lock-claim: recognized by pre-tool-scope-guard and writes session row"
+}
+
+test_scope_lock_claim_writes_are_idempotent() {
+  local tmp transcript record_payload rowcount
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  record_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-claim docs/plans/p.md" \
+    --arg cwd "$tmp" --arg tp "$transcript" \
+    '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
+  for _ in 1 2 3; do
+    run_hook pre-tool-scope-guard "$record_payload" >/dev/null 2>&1 || true
+  done
+  rowcount=$(wc -l < "$tmp/.claude/autodev-state/session-locks.jsonl" | awk '{print $1}')
+  if [ "$rowcount" -ne 1 ]; then
+    fail "scope-lock-claim: expected 1 row after 3 invocations, got: $rowcount"
+    return
+  fi
+  pass "scope-lock-claim: dedupe keeps session-locks.jsonl at one row per (session, plan)"
+}
+
+test_scope_lock_claim_rejects_unlocked_plan() {
+  local tmp rc
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans"
+  emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
+  set +e
+  bash "$REPO_ROOT/hooks/scope-lock-claim" "$tmp/docs/plans/draft.md" >/dev/null 2>&1
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || { fail "scope-lock-claim: accepted unlocked plan"; return; }
+  pass "scope-lock-claim: rejects unlocked plan"
+}
+
+test_scope_lock_claim_rejects_drift() {
+  local tmp rc
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans" "$tmp/tests"
+  cp "$REPO_ROOT/tests/plan-scope-check.sh" "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  awk '/^\*\*PR Count:\*\* 1/{print "**PR Count:** 2"; next} {print}' \
+    "$tmp/docs/plans/p.md" > "$tmp/docs/plans/p.md.tmp" \
+    && mv "$tmp/docs/plans/p.md.tmp" "$tmp/docs/plans/p.md"
+  set +e
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-claim" "docs/plans/p.md" >/dev/null 2>&1 )
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || { fail "scope-lock-claim: accepted drifted manifest"; return; }
+  pass "scope-lock-claim: rejects manifest drift"
+}
+
+test_scope_lock_abandon_flips_status_and_prunes_state() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state" "$tmp/.autodev/state"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  jq -nc --arg s "session.jsonl" --arg pl "docs/plans/p.md" \
+    '{ev:"session-lock",session:$s,pl:$pl}' \
+    > "$tmp/.claude/autodev-state/session-locks.jsonl"
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/p.md" --reason "user pivoted" >/dev/null )
+  if ! grep -qE '^\*\*Status:\*\*[[:space:]]+Abandoned' "$tmp/docs/plans/p.md"; then
+    fail "scope-lock-abandon: status not flipped to Abandoned"
+    return
+  fi
+  if ! grep -q 'user pivoted' "$tmp/docs/plans/p.md"; then
+    fail "scope-lock-abandon: reason missing from status line"
+    return
+  fi
+  if [ -e "$tmp/docs/plans/p.md.scope-lock" ]; then
+    fail "scope-lock-abandon: .scope-lock not removed"
+    return
+  fi
+  if [ -s "$tmp/.claude/autodev-state/session-locks.jsonl" ] \
+     && jq -e --arg pl "docs/plans/p.md" 'select(.pl==$pl)' \
+        "$tmp/.claude/autodev-state/session-locks.jsonl" >/dev/null 2>&1; then
+    fail "scope-lock-abandon: session-lock row not pruned"
+    return
+  fi
+  if ! jq -e 'select(.ev=="plan" and .st=="abandoned" and .reason=="user pivoted")' \
+      "$tmp/.autodev/state/phase-progress.jsonl" >/dev/null 2>&1; then
+    fail "scope-lock-abandon: phase-progress row missing or malformed"
+    return
+  fi
+  pass "scope-lock-abandon: flips status, removes lock, prunes session-locks, appends phase-progress"
+}
+
+test_scope_lock_abandon_requires_reason() {
+  local tmp rc
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  set +e
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/p.md" >/dev/null 2>&1 )
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || { fail "scope-lock-abandon: accepted missing --reason"; return; }
+  set +e
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/p.md" --reason "" >/dev/null 2>&1 )
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || { fail "scope-lock-abandon: accepted empty --reason"; return; }
+  pass "scope-lock-abandon: requires non-empty --reason"
+}
+
+test_scope_lock_abandon_sanitizes_reason() {
+  local tmp line
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans" "$tmp/.autodev/state"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/p.md" \
+      --reason $'multi\nline\twith\ttabs and **bold** text' >/dev/null )
+  line=$(grep -E '^\*\*Status:\*\*[[:space:]]+Abandoned' "$tmp/docs/plans/p.md")
+  if [ "$(printf '%s' "$line" | wc -l | awk '{print $1}')" -ne 0 ]; then
+    fail "scope-lock-abandon: status spans multiple lines: ${line}"
+    return
+  fi
+  if printf '%s' "$line" | grep -q '\*\*bold\*\*'; then
+    fail "scope-lock-abandon: did not neutralize ** in reason: ${line}"
+    return
+  fi
+  pass "scope-lock-abandon: sanitizes multi-line reason and neutralizes **"
+}
+
+test_scope_lock_abandon_refuses_unlocked() {
+  local tmp rc
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans"
+  emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
+  set +e
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/draft.md" --reason "test" >/dev/null 2>&1 )
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || { fail "scope-lock-abandon: accepted non-Locked plan"; return; }
+  pass "scope-lock-abandon: refuses non-Locked plan"
+}
+
+test_e2e_claim_then_nag_includes_plan() {
+  local tmp transcript record_payload nag_output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
+  emit_locked_fixture "$tmp/docs/plans/active.md" "active"
+  record_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-claim docs/plans/active.md" \
+    --arg cwd "$tmp" --arg tp "$transcript" \
+    '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
+  run_hook pre-tool-scope-guard "$record_payload" >/dev/null 2>&1 || true
+  nag_output="$(run_hook prompt-strict-interpretation '{"prompt":"go ahead and create a PR","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
+  if ! printf '%s' "$nag_output" | jq -e '.hookSpecificOutput.additionalContext | contains("active.md")' >/dev/null; then
+    fail "e2e claim→nag: nag did not include claimed plan, output: ${nag_output}"
+    return
+  fi
+  pass "e2e: claim → next prompt nag references the claimed plan"
+}
+
+test_e2e_abandon_then_no_nag() {
+  local tmp transcript record_payload nag_output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state" "$tmp/.autodev/state"
+  emit_locked_fixture "$tmp/docs/plans/stale.md" "stale"
+  record_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-claim docs/plans/stale.md" \
+    --arg cwd "$tmp" --arg tp "$transcript" \
+    '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
+  run_hook pre-tool-scope-guard "$record_payload" >/dev/null 2>&1 || true
+  nag_output="$(run_hook prompt-strict-interpretation '{"prompt":"go ahead","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
+  printf '%s' "$nag_output" | jq -e '.hookSpecificOutput.additionalContext | contains("stale.md")' >/dev/null \
+    || { fail "e2e abandon: precondition (nag after claim) not met"; return; }
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/stale.md" --reason "test abandon" >/dev/null )
+  nag_output="$(run_hook prompt-strict-interpretation '{"prompt":"go ahead","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
+  if [ -n "$nag_output" ]; then
+    fail "e2e abandon: nag still fires after abandon, output: ${nag_output}"
+    return
+  fi
+  pass "e2e: abandon → next prompt is silent"
+}
+
+test_e2e_fresh_session_no_claim_no_nag() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/fresh.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
+  emit_locked_fixture "$tmp/docs/plans/foo.md" "foo"
+  output="$(run_hook prompt-strict-interpretation '{"prompt":"go ahead","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
+  if [ -n "$output" ]; then
+    fail "e2e fresh session: workspace fallback still fires, output: ${output}"
+    return
+  fi
+  pass "e2e: fresh session with no claim does not nag on workspace-only locks"
+}
+
 test_record_activity_compact_state() {
   local tmp
   tmp="$(mktemp -d)"
@@ -1030,13 +1376,16 @@ test_wrapper_suppresses_unavailable_c_utf8_locale_noise
 test_prompt_strict_json
 test_prompt_strict_no_output_without_trigger
 test_prompt_strict_ignores_ambiguous_workspace_locks_when_session_has_no_lock
-test_prompt_strict_falls_back_to_single_workspace_lock
+test_prompt_strict_ignores_single_workspace_lock_when_session_has_no_lock
 test_prompt_strict_uses_session_locked_plan_only
+test_prompt_strict_ignores_prose_mention_of_locked_status
 test_pretool_pr_review_json
 test_posttool_pr_created_json
 test_pre_compact_snapshot_json
 test_wrapper_suppresses_pre_compact_locale_noise
 test_pre_compact_snapshot_only_locked_plans
+test_pre_compact_ignores_prose_mention_of_locked_status
+test_pre_compact_ignores_single_workspace_lock_when_session_has_no_lock
 test_scope_lock_complete_marks_complete_and_prunes_state
 test_scope_lock_complete_requires_lock_file
 test_scope_lock_complete_rejects_bad_lock_without_project_checker
@@ -1045,12 +1394,27 @@ test_scope_lock_complete_rejects_progress_directory
 test_completion_continuation_block
 test_completion_continuation_block_keeps_heading_separator_when_flattened
 test_pretool_records_session_lock_for_scope_lock_apply
+test_pretool_ignores_prose_mention_of_locked_status
 test_completion_ignores_ambiguous_workspace_locks_when_session_has_no_lock
-test_completion_falls_back_to_single_workspace_lock
+test_completion_ignores_single_workspace_lock_when_session_has_no_lock
 test_completion_uses_session_locked_plan_only
 test_completion_allows_hard_blocker
+test_completion_ignores_prose_mention_of_locked_status
 test_pretool_allows_locked_plan_text_edit
 test_subagent_allows_non_manifest_plan_backport
+test_subagent_scope_guard_ignores_unattributed_workspace_lock
+test_subagent_scope_guard_blocks_attributed_drift
+test_scope_lock_claim_writes_session_attribution
+test_scope_lock_claim_writes_are_idempotent
+test_scope_lock_claim_rejects_unlocked_plan
+test_scope_lock_claim_rejects_drift
+test_scope_lock_abandon_flips_status_and_prunes_state
+test_scope_lock_abandon_requires_reason
+test_scope_lock_abandon_sanitizes_reason
+test_scope_lock_abandon_refuses_unlocked
+test_e2e_claim_then_nag_includes_plan
+test_e2e_abandon_then_no_nag
+test_e2e_fresh_session_no_claim_no_nag
 test_record_activity_compact_state
 test_skill_activation_audit_reads_compact_state
 

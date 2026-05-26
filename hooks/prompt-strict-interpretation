@@ -102,7 +102,7 @@ if [ -d "$plans_dir" ]; then
             | sort \
             | while IFS= read -r plan; do
                 [ -n "$plan" ] || continue
-                grep -q '\*\*Status:\*\* Locked' "$plan" 2>/dev/null || continue
+                grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$plan" 2>/dev/null || continue
                 printf '%s\n' "$plan"
             done
     }
@@ -128,14 +128,7 @@ if [ -d "$plans_dir" ]; then
 
     if [ -n "$session_key" ]; then
         session_plans=$(session_locked_plans)
-        if [ -n "$session_plans" ]; then
-            locked_plan=$(printf '%s\n' "$session_plans" | head -1)
-        else
-            workspace_plans=$(workspace_locked_plans)
-            if [ "$(printf '%s\n' "$workspace_plans" | awk 'NF {count++} END {print count+0}')" -eq 1 ]; then
-                locked_plan=$(printf '%s\n' "$workspace_plans" | head -1)
-            fi
-        fi
+        [ -n "$session_plans" ] && locked_plan=$(printf '%s\n' "$session_plans" | head -1)
     else
         locked_plan=$(workspace_locked_plans | head -1 || true)
     fi
