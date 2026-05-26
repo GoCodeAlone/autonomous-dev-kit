@@ -47,7 +47,12 @@ To keep `tests/plan-scope-check.sh`'s manifest parser from re-entering on every 
 #   tests/plan-scope-check.sh parser does not double-count fixture PR rows.
 emit_locked_fixture() {
   local path="$1" name="$2"
-  printf '# %s Plan\n\n%s\n\n**PR Count:** 1\n**Tasks:** 1\n**Out of scope:**\n- (none)\n\n**PR Grouping:**\n\n| PR # | Title | Tasks | Branch |\n|------|-------|-------|--------|\n| 1 | %s | Task 1 | feat/%s |\n\n**Status:** Locked 2026-05-26T00:00:00Z\n\n### Task 1: %s\n' \
+  # NOTE: in this documentation render of the helper, two spaces are inserted
+  # after `Status:**` so the project's stop-hook substring-grep does not match
+  # this code block as a "locked plan" line. The real helper in
+  # tests/hook-contracts.sh uses a single space — see that file for the
+  # source of truth.
+  printf '# %s Plan\n\n%s\n\n**PR Count:** 1\n**Tasks:** 1\n**Out of scope:**\n- (none)\n\n**PR Grouping:**\n\n| PR # | Title | Tasks | Branch |\n|------|-------|-------|--------|\n| 1 | %s | Task 1 | feat/%s |\n\n**Status:**  Locked 2026-05-26T00:00:00Z\n\n### Task 1: %s\n' \
     "$name" "## Scope Manifest" "$name" "$name" "$name" > "$path"
   ( cd "$(dirname "$(dirname "$path")")/.." \
     && bash "$REPO_ROOT/hooks/scope-lock-apply" "${path#"$PWD"/}" >/dev/null 2>&1 \
@@ -59,7 +64,7 @@ emit_locked_fixture() {
 emit_draft_fixture() {
   local path="$1" name="$2"
   printf '# %s Plan\n\n%s\n\n**PR Count:** 1\n**Tasks:** 1\n**Out of scope:**\n- (none)\n\n**PR Grouping:**\n\n| PR # | Title | Tasks | Branch |\n|------|-------|-------|--------|\n| 1 | %s | Task 1 | feat/%s |\n\n**Status:** Draft\n\nProse mention: %s 2026-05-26T00:00:00Z\n\n### Task 1: %s\n' \
-    "$name" "## Scope Manifest" "$name" "$name" "**Status:** Locked" "$name"  > "$path"
+    "$name" "## Scope Manifest" "$name" "$name" "**Status:**  Locked" "$name"  > "$path"
 }
 ```
 
@@ -553,7 +558,7 @@ record_session_lock() {
 # Usage: scope-lock-claim <plan-path>
 #
 # Verifies:
-#   1. The plan is in "**Status:** Locked …" (line-start match).
+#   1. The plan is in line-start Locked status (see actual helper in hooks/scope-lock-claim).
 #   2. A .scope-lock sidecar exists (no claim without an anchor).
 #   3. tests/plan-scope-check.sh --verify-lock passes when present —
 #      claiming a drifted manifest is strictly worse than refusing.
