@@ -1,5 +1,21 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.0.1 (2026-05-26)
+
+### Documentation
+
+- Clarified that `npx skills add` installs Codex skills only, not the Codex
+  plugin wrapper, hooks, trust state, or marketplace config.
+- Added native Codex plugin install and old-plugin removal commands to the
+  README.
+
+### Debugging workflow
+
+- Added an explicit bug-backpropagation invariant step to
+  `systematic-debugging`: after a root-cause fix, agents must identify the
+  durable "System must always/never ..." invariant that would have caught the
+  bug, or state why no durable invariant exists.
+
 ## v6.0.0 (2026-05-25)
 
 ### Rename and ownership

@@ -191,14 +191,25 @@ You MUST complete each phase before proceeding to the next.
    - No other tests broken?
    - Issue actually resolved?
 
-4. **If Fix Doesn't Work**
+4. **Backpropagate the Invariant**
+   - After the root cause is fixed, ask: "What invariant would have caught this before it shipped?"
+   - If the answer is durable, record it where future work will see it:
+     - **Test invariant**: add or strengthen a regression/class-invariant test.
+     - **Design invariant**: backport the constraint into the design, plan notes, or `docs/design-guidance.md`.
+     - **Scope invariant**: update the Scope Manifest only through explicit user approval, ADR, and alignment re-check.
+     - **Operational invariant**: add CI, hook, runtime-launch, observability, or deployment verification.
+   - State the invariant in one sentence: "System must always/never ..."
+   - If the bug disproved an assumption, update the assumption list or guidance so adversarial review can challenge it next time.
+   - If no durable invariant exists, state why this was a one-off and keep the fix/test local.
+
+5. **If Fix Doesn't Work**
    - STOP
    - Count: How many fixes have you tried?
    - If < 3: Return to Phase 1, re-analyze with new information
-   - **If ≥ 3: STOP and question the architecture (step 5 below)**
+   - **If ≥ 3: STOP and question the architecture (step 6 below)**
    - DON'T attempt Fix #4 without architectural discussion
 
-5. **If 3+ Fixes Failed: Question Architecture**
+6. **If 3+ Fixes Failed: Question Architecture**
 
    **Pattern indicating architectural problem:**
    - Each fix reveals new shared state/coupling/problem in different place

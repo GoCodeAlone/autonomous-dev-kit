@@ -68,7 +68,7 @@ In Cursor Agent chat, install from marketplace:
 
 ### Codex
 
-From your project root, install with the open Skills CLI:
+From your project root, install the skills with the open Skills CLI:
 
 ```bash
 npx skills add GoCodeAlone/autonomous-dev-kit -a codex --skill '*' -y
@@ -81,6 +81,22 @@ npx skills add GoCodeAlone/autonomous-dev-kit -a codex --skill '*' -g -y
 ```
 
 Then restart Codex so it discovers the skills.
+
+The Skills CLI path installs `SKILL.md` files only. It does not install the
+Codex plugin wrapper, hooks, plugin trust state, or marketplace config. For the
+full Codex plugin install, use Codex's native plugin commands:
+
+```bash
+codex plugin marketplace add GoCodeAlone/claude-marketplace
+codex plugin add autodev@claude-marketplace
+```
+
+To remove the old plugin first:
+
+```bash
+codex plugin remove superpowers@superpowers-marketplace
+codex plugin marketplace remove superpowers-marketplace
+```
 
 Manual fallback: tell Codex:
 
@@ -163,6 +179,16 @@ Per-skill host-conditional audit: [tests/cross-llm-coverage.md](tests/cross-llm-
 ## Strict-interpretation invariant
 
 Once a plan is locked, ambiguous user phrases — "reorder as needed", "create a PR", "test locally", "ship a demo", "be quick" — do NOT authorize rescoping, PR collapse, or partial-scope shipping. The agent picks the most-faithful-to-the-locked-manifest interpretation; if multiple strict readings remain plausible, it stops and asks. See the table in `skills/using-autodev/SKILL.md` § "Strict-interpretation invariant" for the full mapping and the amendment path.
+
+## Bug Backpropagation Invariants
+
+When a bug is fixed, `systematic-debugging` now requires a backpropagation check:
+what invariant would have caught this before it shipped? Durable invariants are
+recorded as tests, design/plan backports, project guidance, scope-manifest
+amendments, CI/hooks, runtime validation, or deployment checks. The invariant
+should be stated as a one-line "System must always/never ..." rule. If the bug
+proved an assumption false, that assumption is backported so the next
+adversarial review challenges it explicitly.
 
 ## What's Inside
 
