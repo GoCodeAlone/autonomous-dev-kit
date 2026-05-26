@@ -258,6 +258,110 @@ PLAN
   pass "completion-claim-guard: flattened checkpoint keeps heading separator"
 }
 
+test_pretool_records_session_lock_for_scope_lock_apply() {
+  local tmp transcript output state_file
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+
+  output="$(run_hook pre-tool-scope-guard '{"tool_name":"Bash","tool_input":{"command":"bash hooks/scope-lock-apply docs/plans/active.md"},"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
+  if [ -n "$output" ]; then
+    fail "pre-tool-scope-guard: expected scope-lock recording to pass silently, got: ${output}"
+    return
+  fi
+
+  state_file="$tmp/.claude/autodev-state/session-locks.jsonl"
+  if ! jq -e 'select(.ev == "session-lock" and .session == "session.jsonl" and .pl == "docs/plans/active.md")' "$state_file" >/dev/null; then
+    fail "pre-tool-scope-guard: expected session lock row in ${state_file}"
+    return
+  fi
+  pass "pre-tool-scope-guard: records scope-lock plan for current session"
+}
+
+test_completion_ignores_unrelated_locked_plan_when_session_has_no_lock() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/tests"
+  cat >"$tmp/docs/plans/unrelated.md" <<'PLAN'
+# Unrelated Plan
+
+## Scope Manifest
+
+**PR Count:** 1
+**Tasks:** 1
+**Out of scope:**
+- (none)
+
+**PR Grouping:**
+
+| PR # | Title | Tasks | Branch |
+|------|-------|-------|--------|
+| 1 | Unrelated | Task 1 | feat/unrelated |
+
+**Status:** Locked 2026-05-25T00:00:00Z
+
+### Task 1: Unrelated
+PLAN
+  cp tests/plan-scope-check.sh "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  bash hooks/scope-lock-apply "$tmp/docs/plans/unrelated.md" >/dev/null
+
+  output="$(run_hook completion-claim-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false,"last_assistant_message":"Task complete."}')"
+  if [ -n "$output" ]; then
+    fail "completion-claim-guard: expected unrelated workspace lock to be ignored for session, got: ${output}"
+    return
+  fi
+  pass "completion-claim-guard: ignores unrelated locked plans when session has no lock"
+}
+
+test_completion_uses_session_locked_plan_only() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/tests"
+  for name in active unrelated; do
+    cat >"$tmp/docs/plans/${name}.md" <<PLAN
+# ${name} Plan
+
+## Scope Manifest
+
+**PR Count:** 1
+**Tasks:** 1
+**Out of scope:**
+- (none)
+
+**PR Grouping:**
+
+| PR # | Title | Tasks | Branch |
+|------|-------|-------|--------|
+| 1 | ${name} | Task 1 | feat/${name} |
+
+**Status:** Locked 2026-05-25T00:00:00Z
+
+### Task 1: ${name}
+PLAN
+  done
+  cp tests/plan-scope-check.sh "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  bash hooks/scope-lock-apply "$tmp/docs/plans/active.md" >/dev/null
+  bash hooks/scope-lock-apply "$tmp/docs/plans/unrelated.md" >/dev/null
+
+  run_hook pre-tool-scope-guard '{"tool_name":"Bash","tool_input":{"command":"bash hooks/scope-lock-apply docs/plans/active.md"},"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}' >/dev/null
+  output="$(run_hook completion-claim-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false,"last_assistant_message":"Task complete."}')"
+
+  if ! printf '%s' "$output" | jq -e '.decision == "block" and (.reason | contains("active.md")) and (.reason | contains("unrelated.md") | not)' >/dev/null; then
+    fail "completion-claim-guard: expected only the session locked plan to block, got: ${output}"
+    return
+  fi
+  pass "completion-claim-guard: uses only session locked plans"
+}
+
 test_completion_allows_hard_blocker() {
   local tmp
   tmp="$(mktemp -d)"
@@ -436,6 +540,9 @@ test_posttool_pr_created_json
 test_pre_compact_snapshot_json
 test_completion_continuation_block
 test_completion_continuation_block_keeps_heading_separator_when_flattened
+test_pretool_records_session_lock_for_scope_lock_apply
+test_completion_ignores_unrelated_locked_plan_when_session_has_no_lock
+test_completion_uses_session_locked_plan_only
 test_completion_allows_hard_blocker
 test_pretool_allows_locked_plan_text_edit
 test_subagent_allows_non_manifest_plan_backport

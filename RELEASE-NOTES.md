@@ -7,6 +7,10 @@
 - Added an explicit separator after the locked plan filename in the stop-hook
   completion checkpoint so hosts that flatten hook feedback do not display
   `plan.mdBefore stopping`.
+- Scoped stop-hook completion checks and pre-push lock verification to plans
+  locked by the current session when the host provides a transcript path,
+  avoiding cross-agent interference from unrelated locked plans in the same
+  workspace.
 - Added a hook-contract regression that flattens the checkpoint reason and
   verifies the filename remains separated from the next sentence.
 
