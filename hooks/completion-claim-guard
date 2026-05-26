@@ -101,7 +101,8 @@ if [ -z "$failures" ]; then
         first_plan=$(printf '%s\n' "$locked_plans" | head -1)
         first_plan_name=$(basename "$first_plan")
         progress_file="${cwd_dir}/.autodev/state/phase-progress.jsonl"
-        block "Completion checkpoint — locked plan still in effect: ${first_plan_name}
+        checkpoint_prefix="Completion checkpoint — locked plan still in effect: ${first_plan_name} "
+        block "${checkpoint_prefix}
 
 Before stopping, decide whether this is:
   1. A phase/task completion inside the locked design, or

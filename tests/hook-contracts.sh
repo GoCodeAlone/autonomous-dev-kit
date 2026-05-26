@@ -218,6 +218,46 @@ PLAN
   pass "completion-claim-guard: blocks phase completion and requests progress log"
 }
 
+test_completion_continuation_block_keeps_heading_separator_when_flattened() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans" "$tmp/tests"
+  cat >"$tmp/docs/plans/example.md" <<'PLAN'
+# Example Plan
+
+## Scope Manifest
+
+**PR Count:** 1
+**Tasks:** 1
+**Out of scope:**
+- (none)
+
+**PR Grouping:**
+
+| PR # | Title | Tasks | Branch |
+|------|-------|-------|--------|
+| 1 | Example | Task 1 | feat/example |
+
+**Status:** Locked 2026-05-25T00:00:00Z
+
+### Task 1: Example
+PLAN
+  cp tests/plan-scope-check.sh "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  bash hooks/scope-lock-apply "$tmp/docs/plans/example.md" >/dev/null
+
+  local output flat_reason
+  output="$(run_hook completion-claim-guard '{"cwd":"'"$tmp"'","stop_hook_active":false,"last_assistant_message":"Task 1 complete."}')"
+  flat_reason="$(printf '%s' "$output" | jq -r '.reason' | tr -d '\r\n')"
+
+  if ! printf '%s' "$flat_reason" | grep -q 'example.md Before stopping'; then
+    fail "completion-claim-guard: expected flattened checkpoint to keep separator before 'Before stopping', got: ${flat_reason}"
+    return
+  fi
+  pass "completion-claim-guard: flattened checkpoint keeps heading separator"
+}
+
 test_completion_allows_hard_blocker() {
   local tmp
   tmp="$(mktemp -d)"
@@ -395,6 +435,7 @@ test_pretool_pr_review_json
 test_posttool_pr_created_json
 test_pre_compact_snapshot_json
 test_completion_continuation_block
+test_completion_continuation_block_keeps_heading_separator_when_flattened
 test_completion_allows_hard_blocker
 test_pretool_allows_locked_plan_text_edit
 test_subagent_allows_non_manifest_plan_backport

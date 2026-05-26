@@ -1,5 +1,15 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.0.4 (2026-05-26)
+
+### Stop-hook feedback formatting
+
+- Added an explicit separator after the locked plan filename in the stop-hook
+  completion checkpoint so hosts that flatten hook feedback do not display
+  `plan.mdBefore stopping`.
+- Added a hook-contract regression that flattens the checkpoint reason and
+  verifies the filename remains separated from the next sentence.
+
 ## v6.0.3 (2026-05-26)
 
 ### Hook JSON reliability
