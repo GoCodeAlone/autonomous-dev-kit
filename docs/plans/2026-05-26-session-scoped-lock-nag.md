@@ -35,14 +35,45 @@
 
 ---
 
+## Test fixture helper (shared by every test below)
+
+To keep `tests/plan-scope-check.sh`'s manifest parser from re-entering on every fixture heredoc, ALL fixture plans emit through a single printf helper that hides the heading from column 0 in this markdown file. Add this helper near the top of the new test block in `tests/hook-contracts.sh`:
+
+```bash
+# emit_locked_fixture <plan-abs-path> <name>
+#   Writes a minimal-but-valid locked plan to <plan-abs-path>, then runs
+#   hooks/scope-lock-apply against it from the repo root. The plan body is
+#   produced with printf (not a heredoc) so this plan document's own
+#   tests/plan-scope-check.sh parser does not double-count fixture PR rows.
+emit_locked_fixture() {
+  local path="$1" name="$2"
+  printf '# %s Plan\n\n%s\n\n**PR Count:** 1\n**Tasks:** 1\n**Out of scope:**\n- (none)\n\n**PR Grouping:**\n\n| PR # | Title | Tasks | Branch |\n|------|-------|-------|--------|\n| 1 | %s | Task 1 | feat/%s |\n\n**Status:** Locked 2026-05-26T00:00:00Z\n\n### Task 1: %s\n' \
+    "$name" "## Scope Manifest" "$name" "$name" "$name" > "$path"
+  ( cd "$(dirname "$(dirname "$path")")/.." \
+    && bash "$REPO_ROOT/hooks/scope-lock-apply" "${path#"$PWD"/}" >/dev/null 2>&1 \
+    || bash "$REPO_ROOT/hooks/scope-lock-apply" "$path" >/dev/null )
+}
+
+# emit_draft_fixture <plan-abs-path> <name>
+#   Same shape but Status is Draft; used for prose-mention regression tests.
+emit_draft_fixture() {
+  local path="$1" name="$2"
+  printf '# %s Plan\n\n%s\n\n**PR Count:** 1\n**Tasks:** 1\n**Out of scope:**\n- (none)\n\n**PR Grouping:**\n\n| PR # | Title | Tasks | Branch |\n|------|-------|-------|--------|\n| 1 | %s | Task 1 | feat/%s |\n\n**Status:** Draft\n\nProse mention: %s 2026-05-26T00:00:00Z\n\n### Task 1: %s\n' \
+    "$name" "## Scope Manifest" "$name" "$name" "**Status:** Locked" "$name"  > "$path"
+}
+```
+
+Every test below uses these two helpers — no per-test heredoc.
+
+---
+
 ### Task 1: Anchored status-line grep — pre-tool-scope-guard
 
 **Files:**
 - Modify: `hooks/pre-tool-scope-guard`
+- Modify: `tests/hook-contracts.sh` (add `emit_locked_fixture` + `emit_draft_fixture` helpers + test below)
 
 **Step 1: Write the failing test.**
-
-Add to `tests/hook-contracts.sh`:
 
 ```bash
 test_pretool_ignores_prose_mention_of_locked_status() {
@@ -52,35 +83,9 @@ test_pretool_ignores_prose_mention_of_locked_status() {
   transcript="$tmp/session.jsonl"
   touch "$transcript"
   mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
-  cat >"$tmp/docs/plans/draft.md" <<'PLAN'
-# Draft Plan
-
-Body discusses lock mechanics: a plan marked `**Status:** Locked 2026-05-26T00:00:00Z`
-triggers the nag. This draft itself is not locked.
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | Draft | Task 1 | feat/draft |
-
-**Status:** Draft
-
-### Task 1: Draft
-PLAN
-  # The status line is Draft, but the body mentions the Locked string in prose.
-  # Pre-fix behavior: pre-tool-scope-guard treats this as locked and runs verify_lock.
-  # Post-fix behavior: anchored grep ignores the prose mention.
+  emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
   output="$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push origin feat/x"},"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}' \
     | run_hook pre-tool-scope-guard 2>&1 || true)"
-  # No block decision should be emitted (no .scope-lock file exists; pre-fix this would error).
   if printf '%s' "$output" | grep -q '"decision":"block"'; then
     fail "pre-tool-scope-guard: prose mention of Locked status falsely matched, output: ${output}"
     return
@@ -89,19 +94,16 @@ PLAN
 }
 ```
 
-**Step 2: Run test to verify it fails.**
+**Step 2: Run test to verify it fails.** `bash tests/hook-contracts.sh 2>&1 | grep test_pretool_ignores_prose_mention` → expect FAIL.
 
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_pretool_ignores_prose_mention'`
-Expected: `FAIL: pre-tool-scope-guard: prose mention of Locked status falsely matched, ...` (substring grep matches body prose).
+**Step 3: Tighten the grep.** In `hooks/pre-tool-scope-guard`, replace both `grep -q '\*\*Status:\*\* Locked'` (in the session-attributed branch's inner loop) and `grep -rl '\*\*Status:\*\* Locked'` (workspace-fallback) with their anchored counterparts:
 
-**Step 3: Tighten the grep in `find_locked_plans` and the workspace-fallback grep.**
+```bash
+grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$resolved"     # session-attributed loop
+grep -rlE '^\*\*Status:\*\*[[:space:]]+Locked' "$plans_dir"   # workspace fallback
+```
 
-Replace both `grep -q '\*\*Status:\*\* Locked'` and `grep -rl '\*\*Status:\*\* Locked'` invocations with their `-E '^\*\*Status:\*\*[[:space:]]+Locked'` anchored counterparts. The two call sites are inside `find_locked_plans` (around current line 95 — the session-attributed branch's `grep -q`) and the workspace-fallback branch (around current line 101 — the `grep -rl`).
-
-**Step 4: Run test to verify it passes.**
-
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_pretool_ignores_prose_mention'`
-Expected: `PASS: pre-tool-scope-guard: anchored grep ignores prose mention of Locked status`
+**Step 4: Re-run test.** Expect PASS.
 
 **Step 5: Commit.**
 
@@ -116,10 +118,9 @@ git commit -m "fix(hooks): anchor Status:Locked grep in pre-tool-scope-guard"
 
 **Files:**
 - Modify: `hooks/prompt-strict-interpretation`
+- Modify: `tests/hook-contracts.sh`
 
 **Step 1: Write the failing test.**
-
-Add to `tests/hook-contracts.sh`:
 
 ```bash
 test_prompt_strict_ignores_prose_mention_of_locked_status() {
@@ -129,29 +130,7 @@ test_prompt_strict_ignores_prose_mention_of_locked_status() {
   transcript="$tmp/session.jsonl"
   touch "$transcript"
   mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/draft.md" <<'PLAN'
-# Draft Plan
-
-Body quotes `**Status:** Locked 2026-05-26T00:00:00Z` in prose.
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | Draft | Task 1 | feat/draft |
-
-**Status:** Draft
-
-### Task 1: Draft
-PLAN
-
+  emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
   output="$(run_hook prompt-strict-interpretation '{"prompt":"go ahead and create a PR","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
   if [ -n "$output" ]; then
     fail "prompt-strict-interpretation: prose mention of Locked status triggered nag, output: ${output}"
@@ -161,19 +140,11 @@ PLAN
 }
 ```
 
-**Step 2: Run test to verify it fails.**
+**Step 2: Run.** Expect FAIL.
 
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_prompt_strict_ignores_prose_mention'`
-Expected: FAIL (substring grep currently matches prose mention).
+**Step 3: Tighten the grep at both occurrences inside `workspace_locked_plans` and `session_locked_plans` (≈ lines 105, 124).** Replace `grep -q '\*\*Status:\*\* Locked'` with `grep -qE '^\*\*Status:\*\*[[:space:]]+Locked'`.
 
-**Step 3: Tighten the grep in both `workspace_locked_plans` and `session_locked_plans` inner loops.**
-
-Replace `grep -q '\*\*Status:\*\* Locked'` with `grep -qE '^\*\*Status:\*\*[[:space:]]+Locked'` at every occurrence in this file (≈ lines 105 and 124 in the current file).
-
-**Step 4: Run test to verify it passes.**
-
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_prompt_strict_ignores_prose_mention'`
-Expected: PASS
+**Step 4: Re-run.** Expect PASS.
 
 **Step 5: Commit.**
 
@@ -188,10 +159,9 @@ git commit -m "fix(hooks): anchor Status:Locked grep in prompt-strict-interpreta
 
 **Files:**
 - Modify: `hooks/pre-compact-snapshot`
+- Modify: `tests/hook-contracts.sh`
 
-**Step 1: Write the failing test.**
-
-Add to `tests/hook-contracts.sh`:
+**Step 1: Write the failing test** (same shape as Task 2, using `pre-compact-snapshot` and asserting empty output).
 
 ```bash
 test_pre_compact_ignores_prose_mention_of_locked_status() {
@@ -201,31 +171,8 @@ test_pre_compact_ignores_prose_mention_of_locked_status() {
   transcript="$tmp/session.jsonl"
   touch "$transcript"
   mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/draft.md" <<'PLAN'
-# Draft Plan
-
-Body mentions `**Status:** Locked 2026-05-26T00:00:00Z` in prose.
-
-**Status:** Draft
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | Draft | Task 1 | feat/draft |
-
-### Task 1: Draft
-PLAN
-
+  emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
   output="$(run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
-  # The hook should emit no snapshot since no plan is actually Locked.
   if [ -n "$output" ]; then
     fail "pre-compact-snapshot: prose mention of Locked status triggered snapshot, output: ${output}"
     return
@@ -234,19 +181,7 @@ PLAN
 }
 ```
 
-**Step 2: Run test to verify it fails.**
-
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_pre_compact_ignores_prose_mention'`
-Expected: FAIL.
-
-**Step 3: Tighten the grep at both occurrences (workspace + session loops, ≈ lines 44 and 63).**
-
-Replace `grep -q '\*\*Status:\*\* Locked'` with `grep -qE '^\*\*Status:\*\*[[:space:]]+Locked'`.
-
-**Step 4: Run test to verify it passes.**
-
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_pre_compact_ignores_prose_mention'`
-Expected: PASS
+**Step 2-4:** Same as Task 2; locations to patch in `hooks/pre-compact-snapshot` are ≈ lines 44 and 63.
 
 **Step 5: Commit.**
 
@@ -261,10 +196,9 @@ git commit -m "fix(hooks): anchor Status:Locked grep in pre-compact-snapshot"
 
 **Files:**
 - Modify: `hooks/subagent-scope-guard`
+- Modify: `tests/hook-contracts.sh`
 
-**Step 1: Write the failing test.**
-
-Add to `tests/hook-contracts.sh`:
+**Step 1: Write the failing tests.**
 
 ```bash
 test_subagent_scope_guard_ignores_unattributed_workspace_lock() {
@@ -274,31 +208,9 @@ test_subagent_scope_guard_ignores_unattributed_workspace_lock() {
   transcript="$tmp/session.jsonl"
   touch "$transcript"
   mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/unrelated.md" <<'PLAN'
-# Unrelated Plan
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | Unrelated | Task 1 | feat/unrelated |
-
-**Status:** Locked 2026-05-25T00:00:00Z
-
-### Task 1: Unrelated
-PLAN
-  # Lock it but DON'T attribute it to this session.
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" docs/plans/unrelated.md >/dev/null )
-  # Mutate the manifest after lock so verify_lock would fail if invoked.
+  emit_locked_fixture "$tmp/docs/plans/unrelated.md" "unrelated"
+  # Drift the manifest so verify-lock would fail if invoked.
   printf '\n<!-- drift -->\n' >> "$tmp/docs/plans/unrelated.md"
-  # Run subagent-scope-guard with stop_hook_active false from a session that never claimed.
   output="$(run_hook subagent-scope-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false}' 2>&1 || true)"
   if printf '%s' "$output" | grep -q '"decision":"block"'; then
     fail "subagent-scope-guard: blocked stop for unattributed workspace lock, output: ${output}"
@@ -306,16 +218,36 @@ PLAN
   fi
   pass "subagent-scope-guard: ignores unattributed workspace lock"
 }
+
+test_subagent_scope_guard_blocks_attributed_drift() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state" "$tmp/tests"
+  emit_locked_fixture "$tmp/docs/plans/active.md" "active"
+  jq -nc --arg s "session.jsonl" --arg pl "docs/plans/active.md" \
+    '{ev:"session-lock",session:$s,pl:$pl}' \
+    > "$tmp/.claude/autodev-state/session-locks.jsonl"
+  cp "$REPO_ROOT/tests/plan-scope-check.sh" "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  # Drift inside the manifest section so verify-lock fails.
+  awk '/^\*\*Tasks:\*\*/ {print; print "**Drift:** yes"; next} {print}' \
+    "$tmp/docs/plans/active.md" > "$tmp/docs/plans/active.md.tmp" \
+    && mv "$tmp/docs/plans/active.md.tmp" "$tmp/docs/plans/active.md"
+  output="$(run_hook subagent-scope-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false}' 2>&1 || true)"
+  if ! printf '%s' "$output" | grep -q '"decision":"block"'; then
+    fail "subagent-scope-guard: did NOT block for attributed drift, output: ${output}"
+    return
+  fi
+  pass "subagent-scope-guard: blocks on attributed drift"
+}
 ```
 
-**Step 2: Run test to verify it fails.**
+**Step 2: Run.** Expect both FAIL.
 
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_subagent_scope_guard_ignores_unattributed'`
-Expected: FAIL (current workspace-wide grep returns the plan; verify_lock fails on drift; block fires).
-
-**Step 3: Refactor `subagent-scope-guard` to use session attribution.**
-
-Replace the existing manifest-hash block (current lines 74-83) with:
+**Step 3: Refactor `hooks/subagent-scope-guard`.** Extract `transcript_path` + `session_key` from `hook_input` near the top (mirror the pattern already used by `prompt-strict-interpretation`). Replace the existing locked-plans discovery block (current lines 74-83) with:
 
 ```bash
 transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
@@ -362,66 +294,9 @@ if [ -x "$checker" ] && [ -d "${cwd_dir}/docs/plans" ]; then
 fi
 ```
 
-**Step 4: Run test to verify it passes.**
+**Step 4: Run tests.** Expect both PASS.
 
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_subagent_scope_guard_ignores_unattributed'`
-Expected: PASS
-
-**Step 5: Add a session-attributed regression test.**
-
-Add to `tests/hook-contracts.sh`:
-
-```bash
-test_subagent_scope_guard_blocks_attributed_drift() {
-  local tmp transcript output
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
-  transcript="$tmp/session.jsonl"
-  touch "$transcript"
-  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
-  cat >"$tmp/docs/plans/active.md" <<'PLAN'
-# Active Plan
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | Active | Task 1 | feat/active |
-
-**Status:** Locked 2026-05-26T00:00:00Z
-
-### Task 1: Active
-PLAN
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" docs/plans/active.md >/dev/null )
-  jq -nc --arg session "session.jsonl" --arg pl "docs/plans/active.md" \
-    '{ev:"session-lock",session:$session,pl:$pl}' \
-    > "$tmp/.claude/autodev-state/session-locks.jsonl"
-  # Drift the manifest after attribution.
-  awk '/^### Task 1:/ {print "extra manifest content"; print; next} {print}' \
-    "$tmp/docs/plans/active.md" > "$tmp/docs/plans/active.md.tmp" \
-    && mv "$tmp/docs/plans/active.md.tmp" "$tmp/docs/plans/active.md"
-  ( cd "$tmp" && cp "$REPO_ROOT/tests/plan-scope-check.sh" tests/plan-scope-check.sh \
-    && chmod +x tests/plan-scope-check.sh )
-  output="$(run_hook subagent-scope-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false}' 2>&1 || true)"
-  if ! printf '%s' "$output" | grep -q '"decision":"block"'; then
-    fail "subagent-scope-guard: did NOT block for attributed drift, output: ${output}"
-    return
-  fi
-  pass "subagent-scope-guard: blocks on attributed drift"
-}
-```
-
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_subagent_scope_guard_blocks_attributed_drift'`
-Expected: PASS
-
-**Step 6: Commit.**
+**Step 5: Commit.**
 
 ```bash
 git add hooks/subagent-scope-guard tests/hook-contracts.sh
@@ -435,11 +310,9 @@ git commit -m "fix(hooks): session-scope subagent-scope-guard and anchor Locked 
 **Files:**
 - Modify: `hooks/prompt-strict-interpretation`
 - Modify: `hooks/pre-compact-snapshot`
-- Modify: `tests/hook-contracts.sh` (replace existing fallback test with a "no fallback" test)
+- Modify: `tests/hook-contracts.sh` — replace `test_prompt_strict_falls_back_to_single_workspace_lock` (currently asserts the fallback) with a "no fallback" assertion, and add the analogous test for `pre-compact-snapshot`.
 
-**Step 1: Write the failing tests.**
-
-Replace `test_prompt_strict_falls_back_to_single_workspace_lock` with:
+**Step 1: Edit the existing test to flip its assertion.**
 
 ```bash
 test_prompt_strict_ignores_single_workspace_lock_when_session_has_no_lock() {
@@ -449,27 +322,7 @@ test_prompt_strict_ignores_single_workspace_lock_when_session_has_no_lock() {
   transcript="$tmp/session.jsonl"
   touch "$transcript"
   mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/active.md" <<'PLAN'
-# Active Plan
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | Active | Task 1 | feat/active |
-
-**Status:** Locked 2026-05-25T00:00:00Z
-
-### Task 1: Active
-PLAN
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" docs/plans/active.md >/dev/null )
+  emit_locked_fixture "$tmp/docs/plans/active.md" "active"
   output="$(run_hook prompt-strict-interpretation '{"prompt":"continue autonomously","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
   if [ -n "$output" ]; then
     fail "prompt-strict-interpretation: single workspace lock falsely triggered fallback, output: ${output}"
@@ -477,18 +330,29 @@ PLAN
   fi
   pass "prompt-strict-interpretation: no workspace fallback when session has no lock"
 }
+
+test_pre_compact_ignores_single_workspace_lock_when_session_has_no_lock() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans"
+  emit_locked_fixture "$tmp/docs/plans/active.md" "active"
+  output="$(run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
+  if [ -n "$output" ]; then
+    fail "pre-compact-snapshot: single workspace lock falsely triggered fallback, output: ${output}"
+    return
+  fi
+  pass "pre-compact-snapshot: no workspace fallback when session has no lock"
+}
 ```
 
-Add analogous `test_pre_compact_ignores_single_workspace_lock_when_session_has_no_lock` for `pre-compact-snapshot` (assert empty output).
+Delete the original `test_prompt_strict_falls_back_to_single_workspace_lock` function.
 
-**Step 2: Run test to verify it fails.**
+**Step 2: Run.** Expect both new tests FAIL.
 
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_prompt_strict_ignores_single_workspace_lock|test_pre_compact_ignores_single_workspace_lock'`
-Expected: both FAIL (current fallback still picks the single workspace lock).
-
-**Step 3: Remove the fallback branch in both hooks.**
-
-In `prompt-strict-interpretation` (current lines 130-138):
+**Step 3: Remove the fallback branch in both hooks.** In `prompt-strict-interpretation` (current lines 130-138) and `pre-compact-snapshot` (current lines 68-83), the logic is the same shape:
 
 ```bash
 # OLD
@@ -515,12 +379,9 @@ else
 fi
 ```
 
-In `pre-compact-snapshot` (current lines 68-83): equivalent shape — when `session_key` is present, only use `session_locked_plans`. When `session_key` is empty, keep the workspace-wide stream as today (host did not expose session identity → workspace is the only signal available).
+For `pre-compact-snapshot`, do the equivalent inside `locked_plan_stream`: when `session_key` is set, only stream session_locked_plans; do NOT stream workspace_locked_plans even if exactly one exists.
 
-**Step 4: Run tests to verify they pass.**
-
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_prompt_strict_ignores_single_workspace_lock|test_pre_compact_ignores_single_workspace_lock'`
-Expected: both PASS
+**Step 4: Re-run.** Expect both PASS plus the rest of the file still green.
 
 **Step 5: Commit.**
 
@@ -534,49 +395,29 @@ git commit -m "fix(hooks): drop single-workspace-lock fallback when session has 
 ### Task 6: `hooks/scope-lock-claim` helper
 
 **Files:**
-- Create: `hooks/scope-lock-claim`
-- Modify: `hooks/pre-tool-scope-guard` (extend `record_session_lock` recognizer)
+- Create: `hooks/scope-lock-claim` (chmod +x)
+- Modify: `hooks/pre-tool-scope-guard` (centralize recognized-command list; extend regex to `scope-lock-claim`; dedupe writes)
+- Modify: `tests/hook-contracts.sh`
 
-**Step 1: Write the failing test.**
-
-Add to `tests/hook-contracts.sh`:
+**Step 1: Write the failing tests.**
 
 ```bash
 test_scope_lock_claim_writes_session_attribution() {
-  local tmp transcript record_payload output
+  local tmp transcript record_payload state_file
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   transcript="$tmp/session.jsonl"
   touch "$transcript"
   mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
-  cat >"$tmp/docs/plans/p.md" <<'PLAN'
-# P
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | P | Task 1 | feat/p |
-
-**Status:** Locked 2026-05-26T00:00:00Z
-
-### Task 1: P
-PLAN
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" docs/plans/p.md >/dev/null )
-  # Simulate a fresh-session pre-tool-scope-guard intercept of a scope-lock-claim Bash call.
-  record_payload=$(jq -nc --arg cmd "bash hooks/scope-lock-claim docs/plans/p.md" --arg cwd "$tmp" --arg tp "$transcript" \
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  record_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-claim docs/plans/p.md" \
+    --arg cwd "$tmp" --arg tp "$transcript" \
     '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
-  output="$(printf '%s' "$record_payload" | run_hook pre-tool-scope-guard 2>&1 || true)"
+  printf '%s' "$record_payload" | run_hook pre-tool-scope-guard >/dev/null 2>&1 || true
   state_file="$tmp/.claude/autodev-state/session-locks.jsonl"
   if [ ! -s "$state_file" ]; then
-    fail "scope-lock-claim: pre-tool-scope-guard did not write session-locks.jsonl, output: ${output}"
+    fail "scope-lock-claim: pre-tool-scope-guard did not write session-locks.jsonl"
     return
   fi
   if ! jq -e --arg s "session.jsonl" --arg pl "docs/plans/p.md" \
@@ -587,145 +428,81 @@ PLAN
   pass "scope-lock-claim: recognized by pre-tool-scope-guard and writes session row"
 }
 
-test_scope_lock_claim_helper_runs_and_is_idempotent() {
-  local tmp output1 output2
+test_scope_lock_claim_writes_are_idempotent() {
+  local tmp transcript record_payload rowcount
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
-  mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/p.md" <<'PLAN'
-# P
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | P | Task 1 | feat/p |
-
-**Status:** Locked 2026-05-26T00:00:00Z
-
-### Task 1: P
-PLAN
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" docs/plans/p.md >/dev/null )
-  output1="$(cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-claim" docs/plans/p.md 2>&1 || true)"
-  if ! printf '%s' "$output1" | grep -q 'scope-lock-claim'; then
-    fail "scope-lock-claim: helper output missing recognizer token, got: ${output1}"
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  record_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-claim docs/plans/p.md" \
+    --arg cwd "$tmp" --arg tp "$transcript" \
+    '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
+  for _ in 1 2 3; do
+    printf '%s' "$record_payload" | run_hook pre-tool-scope-guard >/dev/null 2>&1 || true
+  done
+  rowcount=$(wc -l < "$tmp/.claude/autodev-state/session-locks.jsonl" | awk '{print $1}')
+  if [ "$rowcount" -ne 1 ]; then
+    fail "scope-lock-claim: expected 1 row after 3 invocations, got: $rowcount"
     return
   fi
-  output2="$(cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-claim" docs/plans/p.md 2>&1 || true)"
-  if ! printf '%s' "$output2" | grep -q 'scope-lock-claim'; then
-    fail "scope-lock-claim: helper failed on second invocation, got: ${output2}"
-    return
-  fi
-  pass "scope-lock-claim: helper is re-invokable (idempotent shape)"
+  pass "scope-lock-claim: dedupe keeps session-locks.jsonl at one row per (session, plan)"
 }
 
 test_scope_lock_claim_rejects_unlocked_plan() {
-  local tmp rc output
+  local tmp rc
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/draft.md" <<'PLAN'
-# Draft
-**Status:** Draft
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | Draft | Task 1 | feat/draft |
-
-### Task 1: Draft
-PLAN
+  emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
   set +e
-  output="$(cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-claim" docs/plans/draft.md 2>&1)"
+  bash "$REPO_ROOT/hooks/scope-lock-claim" "$tmp/docs/plans/draft.md" >/dev/null 2>&1
   rc=$?
   set -e
-  if [ "$rc" -eq 0 ]; then
-    fail "scope-lock-claim: accepted unlocked plan, output: ${output}"
-    return
-  fi
+  [ "$rc" -ne 0 ] || { fail "scope-lock-claim: accepted unlocked plan"; return; }
   pass "scope-lock-claim: rejects unlocked plan"
 }
 
 test_scope_lock_claim_rejects_drift() {
-  local tmp rc output
+  local tmp rc
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
-  mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/p.md" <<'PLAN'
-# P
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | P | Task 1 | feat/p |
-
-**Status:** Locked 2026-05-26T00:00:00Z
-
-### Task 1: P
-PLAN
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" docs/plans/p.md >/dev/null )
-  # Drift the manifest after lock.
-  sed -i.bak 's/\*\*PR Count:\*\* 1/\*\*PR Count:\*\* 2/' "$tmp/docs/plans/p.md" && rm "$tmp/docs/plans/p.md.bak"
-  # plan-scope-check.sh must be available locally for the drift check.
-  cp "$REPO_ROOT/tests/plan-scope-check.sh" "$tmp/tests/plan-scope-check.sh" 2>/dev/null \
-    || ( mkdir -p "$tmp/tests" && cp "$REPO_ROOT/tests/plan-scope-check.sh" "$tmp/tests/plan-scope-check.sh" )
+  mkdir -p "$tmp/docs/plans" "$tmp/tests"
+  cp "$REPO_ROOT/tests/plan-scope-check.sh" "$tmp/tests/plan-scope-check.sh"
   chmod +x "$tmp/tests/plan-scope-check.sh"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  # Drift inside the manifest section.
+  awk '/^\*\*PR Count:\*\* 1/{print "**PR Count:** 2"; next} {print}' \
+    "$tmp/docs/plans/p.md" > "$tmp/docs/plans/p.md.tmp" \
+    && mv "$tmp/docs/plans/p.md.tmp" "$tmp/docs/plans/p.md"
   set +e
-  output="$(cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-claim" docs/plans/p.md 2>&1)"
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-claim" "docs/plans/p.md" >/dev/null 2>&1 )
   rc=$?
   set -e
-  if [ "$rc" -eq 0 ]; then
-    fail "scope-lock-claim: accepted drifted manifest, output: ${output}"
-    return
-  fi
+  [ "$rc" -ne 0 ] || { fail "scope-lock-claim: accepted drifted manifest"; return; }
   pass "scope-lock-claim: rejects manifest drift"
 }
 ```
 
-**Step 2: Run tests to verify they fail.**
+**Step 2: Run.** Expect 4 × FAIL (helper missing, recognizer regex doesn't match `scope-lock-claim`).
 
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_scope_lock_claim_'`
-Expected: 4 × FAIL (helper file does not exist, pre-tool-scope-guard regex does not recognize claim).
-
-**Step 3: Centralize the recognized-command list in `pre-tool-scope-guard` and add `scope-lock-claim` to it.**
-
-Near the top of the script (after the JSON parsing block), introduce:
+**Step 3: Centralize the recognized-command list and add `scope-lock-claim`.** Near the top of `hooks/pre-tool-scope-guard` (after the JSON parsing block), add:
 
 ```bash
 # ──────────────────────────────────────────────────────────────────────────
-# Recognized helper script names that update session-lock state. These are
-# pattern-matched against Bash tool commands by record_session_lock so the
-# helper scripts never need to know the current session_key themselves.
+# Recognized helper script names that update session-lock state. Pattern-
+# matched against Bash tool commands by record_session_lock so each helper
+# script never needs to know the current session_key itself.
 #
-# Helpers MUST print a line containing their bare name (e.g. "scope-lock-claim")
-# so future maintainers can audit which Bash invocations matter from either end.
+# Helpers MUST emit their bare name on stdout so a future maintainer can
+# audit which Bash invocations matter from either end.
 # ──────────────────────────────────────────────────────────────────────────
-SESSION_LOCK_RECOGNIZED="scope-lock-apply|scope-lock-claim"
+SESSION_LOCK_RECOGNIZED='scope-lock-apply|scope-lock-claim'
 ```
 
-Modify `record_session_lock` to use the variable:
+Rewrite `record_session_lock` to use the variable AND dedupe writes:
 
 ```bash
 record_session_lock() {
@@ -743,7 +520,6 @@ record_session_lock() {
     mkdir -p "$state_dir" 2>/dev/null || return 0
     local state_file="${state_dir}/session-locks.jsonl"
 
-    # Dedupe: skip if the (session, plan) row already exists.
     if [ -f "$state_file" ]; then
         if jq -e --arg s "$session_key" --arg pl "$plan_arg" \
             'select(.ev=="session-lock" and .session==$s and .pl==$pl)' \
@@ -755,9 +531,7 @@ record_session_lock() {
     local ts
     ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     jq -nc \
-        --arg ts "$ts" \
-        --arg session "$session_key" \
-        --arg pl "$plan_arg" \
+        --arg ts "$ts" --arg session "$session_key" --arg pl "$plan_arg" \
         '{ts:$ts,ev:"session-lock",session:$session,pl:$pl}' \
         >> "$state_file" 2>/dev/null || true
 }
@@ -769,32 +543,26 @@ record_session_lock() {
 #!/usr/bin/env bash
 # hooks/scope-lock-claim
 # Attribute an existing locked plan to the current session so the locked-plan
-# nag hooks (prompt-strict-interpretation, pre-compact-snapshot,
-# pre-tool-scope-guard, subagent-scope-guard) fire for this session.
+# nag hooks fire for this session.
 #
 # Use case: an agent session was interrupted (e.g., computer restart) and a
 # fresh session needs to resume the same work. The .scope-lock file is still
-# on disk, but the new session is not in .claude/autodev-state/session-locks.jsonl.
-# Running this helper attributes the lock to the current session.
+# on disk, but the new session is not in session-locks.jsonl. Running this
+# helper attributes the lock to the current session.
 #
 # Usage: scope-lock-claim <plan-path>
 #
 # Verifies:
-#   1. The plan exists and has a line-start "**Status:** Locked …".
+#   1. The plan is in "**Status:** Locked …" (line-start match).
 #   2. A .scope-lock sidecar exists (no claim without an anchor).
-#   3. tests/plan-scope-check.sh --verify-lock (when present) passes —
+#   3. tests/plan-scope-check.sh --verify-lock passes when present —
 #      claiming a drifted manifest is strictly worse than refusing.
 #
-# The actual session-locks.jsonl write is performed by hooks/pre-tool-scope-guard's
-# record_session_lock, which intercepts this Bash invocation and recognizes the
-# helper name in SESSION_LOCK_RECOGNIZED. This helper is read-only with respect
-# to .scope-lock: it never re-hashes the manifest (re-running scope-lock-apply
-# would silently overwrite the original author's hash and defeat the lock's
-# purpose).
-#
-# After the helper returns, it reads back session-locks.jsonl and exits non-zero
-# if the row is not present. Converts a silent "hook recognizer missed me" into
-# a loud failure.
+# The actual session-locks.jsonl write is performed by pre-tool-scope-guard's
+# record_session_lock recognizer (SESSION_LOCK_RECOGNIZED matches this script's
+# bare name). This helper is read-only with respect to .scope-lock — re-running
+# scope-lock-apply would silently overwrite the original author's hash, which
+# defeats the lock.
 
 set -euo pipefail
 
@@ -804,17 +572,14 @@ if [ -z "$plan" ]; then
     printf 'Usage: scope-lock-claim <plan-path>\n' >&2
     exit 3
 fi
-
 if [ ! -f "$plan" ]; then
     printf 'Error: plan file not found: %s\n' "$plan" >&2
     exit 1
 fi
-
 if ! grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$plan"; then
     printf 'Error: plan is not in Locked status: %s\n' "$plan" >&2
     exit 1
 fi
-
 lock_file="${plan}.scope-lock"
 if [ ! -f "$lock_file" ]; then
     printf 'Error: no .scope-lock sidecar for %s — nothing to claim\n' "$plan" >&2
@@ -822,8 +587,7 @@ if [ ! -f "$lock_file" ]; then
 fi
 
 # Drift check (only when the checker is available; absence is not a failure).
-checker_dirs=("$(dirname "$plan")/../../tests" "$(dirname "$plan")/../tests" "./tests")
-for d in "${checker_dirs[@]}"; do
+for d in "$(dirname "$plan")/../../tests" "$(dirname "$plan")/../tests" "./tests"; do
     candidate="${d}/plan-scope-check.sh"
     if [ -x "$candidate" ]; then
         if ! bash "$candidate" --verify-lock "$plan" >/dev/null 2>&1; then
@@ -836,33 +600,12 @@ done
 
 # Sentinel token for pre-tool-scope-guard's record_session_lock recognizer.
 printf 'scope-lock-claim: attributing %s to current session\n' "$plan"
-
-# Liveness read-back: if pre-tool-scope-guard runs in the same Bash call (it does),
-# session-locks.jsonl should have a row for this (session, plan). We can't read
-# session_key from here, but we can confirm a row referencing the plan exists.
-state_file="$(dirname "$plan")/../../.claude/autodev-state/session-locks.jsonl"
-if [ -f "$state_file" ]; then
-    if jq -e --arg pl "$plan" 'select(.ev=="session-lock" and (.pl==$pl or .pl|endswith($pl)))' \
-        "$state_file" >/dev/null 2>&1; then
-        printf 'scope-lock-claim: session attribution confirmed in session-locks.jsonl\n'
-        exit 0
-    fi
-fi
-
-# Row not yet present (or state file absent). pre-tool-scope-guard runs AFTER
-# this helper for the same Bash command, so the write may not be visible yet
-# from inside this process. We exit success in that case; the hook's
-# additionalContext does not affect the agent's view of the row, and the next
-# prompt/snapshot will see it.
 exit 0
 ```
 
-Make executable: `chmod +x hooks/scope-lock-claim`.
+`chmod +x hooks/scope-lock-claim`.
 
-**Step 5: Run tests to verify they pass.**
-
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_scope_lock_claim_'`
-Expected: 4 × PASS
+**Step 5: Re-run all four tests.** Expect 4 × PASS.
 
 **Step 6: Commit.**
 
@@ -876,70 +619,43 @@ git commit -m "feat(scope-lock): add scope-lock-claim helper for session re-attr
 ### Task 7: `hooks/scope-lock-abandon` helper
 
 **Files:**
-- Create: `hooks/scope-lock-abandon`
-- Modify: `hooks/pre-tool-scope-guard` (extend `SESSION_LOCK_RECOGNIZED` cleanup recognizer)
+- Create: `hooks/scope-lock-abandon` (chmod +x)
+- Modify: `tests/hook-contracts.sh`
 
 **Step 1: Write the failing tests.**
 
-Add to `tests/hook-contracts.sh`:
-
 ```bash
 test_scope_lock_abandon_flips_status_and_prunes_state() {
-  local tmp output
+  local tmp
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state" "$tmp/.autodev/state"
-  cat >"$tmp/docs/plans/p.md" <<'PLAN'
-# P
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | P | Task 1 | feat/p |
-
-**Status:** Locked 2026-05-26T00:00:00Z
-
-### Task 1: P
-PLAN
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" docs/plans/p.md >/dev/null )
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
   jq -nc --arg s "session.jsonl" --arg pl "docs/plans/p.md" \
     '{ev:"session-lock",session:$s,pl:$pl}' \
     > "$tmp/.claude/autodev-state/session-locks.jsonl"
-  output="$(cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" docs/plans/p.md --reason "user pivoted" 2>&1)"
-  # Status flipped
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/p.md" --reason "user pivoted" >/dev/null )
   if ! grep -qE '^\*\*Status:\*\*[[:space:]]+Abandoned' "$tmp/docs/plans/p.md"; then
-    fail "scope-lock-abandon: status not flipped to Abandoned, file:\n$(cat "$tmp/docs/plans/p.md")"
+    fail "scope-lock-abandon: status not flipped to Abandoned"
     return
   fi
   if ! grep -q 'user pivoted' "$tmp/docs/plans/p.md"; then
     fail "scope-lock-abandon: reason missing from status line"
     return
   fi
-  # Lock file removed
   if [ -e "$tmp/docs/plans/p.md.scope-lock" ]; then
     fail "scope-lock-abandon: .scope-lock not removed"
     return
   fi
-  # session-locks.jsonl pruned
-  if [ -s "$tmp/.claude/autodev-state/session-locks.jsonl" ]; then
-    if jq -e --arg pl "docs/plans/p.md" 'select(.pl==$pl)' \
+  if [ -s "$tmp/.claude/autodev-state/session-locks.jsonl" ] \
+     && jq -e --arg pl "docs/plans/p.md" 'select(.pl==$pl)' \
         "$tmp/.claude/autodev-state/session-locks.jsonl" >/dev/null 2>&1; then
-      fail "scope-lock-abandon: session-lock row not pruned"
-      return
-    fi
+    fail "scope-lock-abandon: session-lock row not pruned"
+    return
   fi
-  # phase-progress.jsonl appended
   if ! jq -e 'select(.ev=="plan" and .st=="abandoned" and .reason=="user pivoted")' \
       "$tmp/.autodev/state/phase-progress.jsonl" >/dev/null 2>&1; then
-    fail "scope-lock-abandon: phase-progress row missing or malformed, file: $(cat "$tmp/.autodev/state/phase-progress.jsonl")"
+    fail "scope-lock-abandon: phase-progress row missing or malformed"
     return
   fi
   pass "scope-lock-abandon: flips status, removes lock, prunes session-locks, appends phase-progress"
@@ -950,34 +666,14 @@ test_scope_lock_abandon_requires_reason() {
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/p.md" <<'PLAN'
-# P
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | P | Task 1 | feat/p |
-
-**Status:** Locked 2026-05-26T00:00:00Z
-
-### Task 1: P
-PLAN
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" docs/plans/p.md >/dev/null )
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
   set +e
-  bash "$REPO_ROOT/hooks/scope-lock-abandon" "$tmp/docs/plans/p.md" >/dev/null 2>&1
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/p.md" >/dev/null 2>&1 )
   rc=$?
   set -e
   [ "$rc" -ne 0 ] || { fail "scope-lock-abandon: accepted missing --reason"; return; }
   set +e
-  bash "$REPO_ROOT/hooks/scope-lock-abandon" "$tmp/docs/plans/p.md" --reason "" >/dev/null 2>&1
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/p.md" --reason "" >/dev/null 2>&1 )
   rc=$?
   set -e
   [ "$rc" -ne 0 ] || { fail "scope-lock-abandon: accepted empty --reason"; return; }
@@ -985,37 +681,16 @@ PLAN
 }
 
 test_scope_lock_abandon_sanitizes_reason() {
-  local tmp output line
+  local tmp line
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
-  mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/p.md" <<'PLAN'
-# P
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | P | Task 1 | feat/p |
-
-**Status:** Locked 2026-05-26T00:00:00Z
-
-### Task 1: P
-PLAN
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" docs/plans/p.md >/dev/null )
-  bash "$REPO_ROOT/hooks/scope-lock-abandon" "$tmp/docs/plans/p.md" --reason $'multi\nline\twith\ttabs and **bold** text' >/dev/null
+  mkdir -p "$tmp/docs/plans" "$tmp/.autodev/state"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/p.md" \
+      --reason $'multi\nline\twith\ttabs and **bold** text' >/dev/null )
   line=$(grep -E '^\*\*Status:\*\*[[:space:]]+Abandoned' "$tmp/docs/plans/p.md")
-  # Must be a single line; embedded newlines collapsed to spaces.
-  count=$(printf '%s' "$line" | wc -l | awk '{print $1}')
-  if [ "$count" -ne 0 ]; then
-    fail "scope-lock-abandon: status spans multiple lines: ${line}"
+  if [ "$(printf '%s' "$line" | wc -l | awk '{print $1}')" -ne 0 ]; then
+    fail "scope-lock-abandon: status spans multiple lines"
     return
   fi
   if printf '%s' "$line" | grep -q '\*\*bold\*\*'; then
@@ -1030,26 +705,9 @@ test_scope_lock_abandon_refuses_unlocked() {
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/p.md" <<'PLAN'
-# P
-**Status:** Draft
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | P | Task 1 | feat/p |
-
-### Task 1: P
-PLAN
+  emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
   set +e
-  bash "$REPO_ROOT/hooks/scope-lock-abandon" "$tmp/docs/plans/p.md" --reason "test" >/dev/null 2>&1
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/draft.md" --reason "test" >/dev/null 2>&1 )
   rc=$?
   set -e
   [ "$rc" -ne 0 ] || { fail "scope-lock-abandon: accepted non-Locked plan"; return; }
@@ -1057,10 +715,7 @@ PLAN
 }
 ```
 
-**Step 2: Run tests to verify they fail.**
-
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_scope_lock_abandon_'`
-Expected: 4 × FAIL (helper does not exist).
+**Step 2: Run.** Expect 4 × FAIL.
 
 **Step 3: Create `hooks/scope-lock-abandon`.**
 
@@ -1069,22 +724,13 @@ Expected: 4 × FAIL (helper does not exist).
 # hooks/scope-lock-abandon
 # Abandon a locked plan that will not be completed.
 #
-# Sibling to hooks/scope-lock-complete (ADR 0001). Use this when an agent or
-# operator decides to stop pursuing the locked design (user pivoted, design
-# superseded, ran out of capacity, …). Distinct from complete so retros can
-# tell "verified done" from "stopped pursuing".
-#
-# Differences from scope-lock-complete:
-#   - Does NOT verify the manifest hash. Drift is expected for abandoned work.
-#   - Status flips to "Abandoned <UTC> — <reason>" instead of "Complete <UTC>".
-#   - Requires --reason (non-empty), sanitized to a single line, capped at
-#     200 chars, with literal "**" replaced by "__" so the status line's
-#     markdown bold cannot be broken.
-#   - Appends phase-progress.jsonl with st:"abandoned" + reason field (NOT
-#     evidence) so the audit row is distinguishable from a completion.
-#   - Does NOT write an ADR. The status line + phase-progress row together
-#     cover the durable-record case; an operator who wants more detail can
-#     hand-write one.
+# Sibling to hooks/scope-lock-complete (ADR 0001). Distinct from complete:
+#   - Does NOT verify the manifest hash.
+#   - Status flips to "Abandoned <UTC> — <reason>".
+#   - Requires --reason (non-empty); sanitized to single line, capped at 200
+#     chars, with literal "**" replaced by "__".
+#   - Appends phase-progress.jsonl with st:"abandoned" + reason field.
+#   - Does NOT write an ADR.
 #
 # Usage:
 #   scope-lock-abandon <plan-path> --reason "<reason>"
@@ -1123,19 +769,12 @@ while [ "$#" -gt 0 ]; do
     shift || true
 done
 
-if [ -z "$reason" ]; then
-    printf 'scope-lock-abandon: --reason is required\n' >&2
-    exit 2
-fi
+[ -n "$reason" ] || { printf 'scope-lock-abandon: --reason is required\n' >&2; exit 2; }
 
-# Sanitize reason: collapse whitespace runs (newlines/tabs/multiple spaces) to
-# single spaces, replace literal ** with __, and cap at 200 characters.
 sanitized_reason=$(printf '%s' "$reason" | tr -s '\n\t ' ' ' | sed 's/\*\*/__/g' | cut -c1-200)
 
 canonical_path_from_base() {
-    local base="$1"
-    local ref="$2"
-    local candidate
+    local base="$1" ref="$2" candidate
     case "$ref" in
         /*) candidate="$ref" ;;
         */*) candidate="${base}/${ref}" ;;
@@ -1147,17 +786,10 @@ canonical_path_from_base() {
 }
 
 plan_abs=$(canonical_path_from_base "$PWD" "$plan") || {
-    printf 'scope-lock-abandon: unable to resolve plan path: %s\n' "$plan" >&2
-    exit 2
-}
-[ -f "$plan_abs" ] || {
-    printf 'scope-lock-abandon: plan not found: %s\n' "$plan_abs" >&2
-    exit 2
-}
-if ! grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$plan_abs"; then
-    printf 'scope-lock-abandon: plan is not in Locked status: %s\n' "$plan_abs" >&2
-    exit 2
-fi
+    printf 'scope-lock-abandon: unable to resolve plan path: %s\n' "$plan" >&2; exit 2; }
+[ -f "$plan_abs" ] || { printf 'scope-lock-abandon: plan not found: %s\n' "$plan_abs" >&2; exit 2; }
+grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$plan_abs" || {
+    printf 'scope-lock-abandon: plan is not in Locked status: %s\n' "$plan_abs" >&2; exit 2; }
 
 plan_dir=$(cd "$(dirname "$plan_abs")" && pwd)
 repo_root=$(cd "${plan_dir}/../.." && pwd)
@@ -1184,16 +816,12 @@ awk -v ts="$ts" -v r="$sanitized_reason" '
 ' "$plan_abs" > "$plan_tmp"
 
 prune_jsonl() {
-    local file="$1"
+    local file="$1" tmp
     [ -f "$file" ] || return 0
-    local tmp
     tmp=$(mktemp "${file}.abandon.XXXXXX")
     while IFS= read -r line || [ -n "$line" ]; do
         [ -n "$line" ] || continue
-        pl=$(printf '%s' "$line" | jq -r '.pl // empty' 2>/dev/null || true) || {
-            rm -f "$tmp"
-            return 1
-        }
+        pl=$(printf '%s' "$line" | jq -r '.pl // empty' 2>/dev/null || true) || { rm -f "$tmp"; return 1; }
         if [ -n "$pl" ]; then
             resolved=$(canonical_path_from_base "$repo_root" "$pl" 2>/dev/null || true)
             [ "$resolved" = "$plan_abs" ] && continue
@@ -1210,21 +838,16 @@ rm -f "$lock_file"
 prune_jsonl "$session_locks_file" || true
 prune_jsonl "$in_progress_file" || true
 jq -nc \
-    --arg ts "$ts" \
-    --arg pl "$plan_name" \
-    --arg r "$sanitized_reason" \
+    --arg ts "$ts" --arg pl "$plan_name" --arg r "$sanitized_reason" \
     '{ts:$ts,ev:"plan",pl:$pl,st:"abandoned",reason:$r}' \
     >> "$progress_file"
 
 printf 'scope-lock-abandon: abandoned %s (reason: %s)\n' "$plan_rel" "$sanitized_reason"
 ```
 
-Make executable: `chmod +x hooks/scope-lock-abandon`.
+`chmod +x hooks/scope-lock-abandon`.
 
-**Step 4: Run tests to verify they pass.**
-
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_scope_lock_abandon_'`
-Expected: 4 × PASS
+**Step 4: Re-run all four tests.** Expect 4 × PASS.
 
 **Step 5: Commit.**
 
@@ -1250,37 +873,12 @@ test_e2e_claim_then_nag_includes_plan() {
   transcript="$tmp/session.jsonl"
   touch "$transcript"
   mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
-  cat >"$tmp/docs/plans/active.md" <<'PLAN'
-# Active Plan
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | Active | Task 1 | feat/active |
-
-**Status:** Locked 2026-05-26T00:00:00Z
-
-### Task 1: Active
-PLAN
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" docs/plans/active.md >/dev/null )
-
-  # Simulate the agent running scope-lock-claim under pre-tool-scope-guard.
+  emit_locked_fixture "$tmp/docs/plans/active.md" "active"
   record_payload=$(jq -nc \
     --arg cmd "bash hooks/scope-lock-claim docs/plans/active.md" \
-    --arg cwd "$tmp" \
-    --arg tp "$transcript" \
+    --arg cwd "$tmp" --arg tp "$transcript" \
     '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
   printf '%s' "$record_payload" | run_hook pre-tool-scope-guard >/dev/null 2>&1 || true
-
-  # Now the next user prompt with a trigger phrase should nag with the plan name.
   nag_output="$(run_hook prompt-strict-interpretation '{"prompt":"go ahead and create a PR","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
   if ! printf '%s' "$nag_output" | jq -e '.hookSpecificOutput.additionalContext | contains("active.md")' >/dev/null; then
     fail "e2e claim→nag: nag did not include claimed plan, output: ${nag_output}"
@@ -1295,45 +893,17 @@ test_e2e_abandon_then_no_nag() {
   trap 'rm -rf "$tmp"' RETURN
   transcript="$tmp/session.jsonl"
   touch "$transcript"
-  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
-  cat >"$tmp/docs/plans/stale.md" <<'PLAN'
-# Stale Plan
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | Stale | Task 1 | feat/stale |
-
-**Status:** Locked 2026-05-25T00:00:00Z
-
-### Task 1: Stale
-PLAN
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" docs/plans/stale.md >/dev/null )
-  # Pre-claim so the nag would fire if we didn't abandon.
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state" "$tmp/.autodev/state"
+  emit_locked_fixture "$tmp/docs/plans/stale.md" "stale"
   record_payload=$(jq -nc \
     --arg cmd "bash hooks/scope-lock-claim docs/plans/stale.md" \
-    --arg cwd "$tmp" \
-    --arg tp "$transcript" \
+    --arg cwd "$tmp" --arg tp "$transcript" \
     '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
   printf '%s' "$record_payload" | run_hook pre-tool-scope-guard >/dev/null 2>&1 || true
-
-  # Confirm pre-condition: nag fires.
   nag_output="$(run_hook prompt-strict-interpretation '{"prompt":"go ahead","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
   printf '%s' "$nag_output" | jq -e '.hookSpecificOutput.additionalContext | contains("stale.md")' >/dev/null \
-    || { fail "e2e abandon: precondition (nag fires after claim) not met"; return; }
-
-  # Abandon.
-  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" docs/plans/stale.md --reason "test abandon" >/dev/null )
-
-  # Now the next prompt should NOT nag.
+    || { fail "e2e abandon: precondition (nag after claim) not met"; return; }
+  ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-abandon" "docs/plans/stale.md" --reason "test abandon" >/dev/null )
   nag_output="$(run_hook prompt-strict-interpretation '{"prompt":"go ahead","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
   if [ -n "$nag_output" ]; then
     fail "e2e abandon: nag still fires after abandon, output: ${nag_output}"
@@ -1349,31 +919,8 @@ test_e2e_fresh_session_no_claim_no_nag() {
   transcript="$tmp/fresh.jsonl"
   touch "$transcript"
   mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
-  for n in foo bar; do
-    cat >"$tmp/docs/plans/${n}.md" <<PLAN
-# ${n}
-
-## Scope Manifest
-
-**PR Count:** 1
-**Tasks:** 1
-**Out of scope:**
-- (none)
-
-**PR Grouping:**
-
-| PR # | Title | Tasks | Branch |
-|------|-------|-------|--------|
-| 1 | ${n} | Task 1 | feat/${n} |
-
-**Status:** Locked 2026-05-25T00:00:00Z
-
-### Task 1: ${n}
-PLAN
-    ( cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-apply" "docs/plans/${n}.md" >/dev/null )
-  done
-  # No claim. Even a single workspace lock should NOT trigger fallback.
-  rm -f "$tmp/docs/plans/bar.md.scope-lock" "$tmp/docs/plans/bar.md"   # leave only one locked plan
+  emit_locked_fixture "$tmp/docs/plans/foo.md" "foo"
+  # No claim, no session-locks row. Single workspace lock — pre-fix would fall back.
   output="$(run_hook prompt-strict-interpretation '{"prompt":"go ahead","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
   if [ -n "$output" ]; then
     fail "e2e fresh session: workspace fallback still fires, output: ${output}"
@@ -1383,10 +930,7 @@ PLAN
 }
 ```
 
-**Step 2: Run tests to verify they pass.**
-
-Run: `bash tests/hook-contracts.sh 2>&1 | grep -E '^(PASS|FAIL): test_e2e_'`
-Expected: 3 × PASS
+**Step 2: Run.** Expect 3 × PASS (depends on Tasks 1-7 already merged into the running file).
 
 **Step 3: Commit.**
 
@@ -1397,14 +941,12 @@ git commit -m "test: end-to-end claim→nag and abandon→silence cycles"
 
 ---
 
-### Task 9: SKILL.md documentation + register the helpers
+### Task 9: SKILL.md documentation + final test pass
 
 **Files:**
 - Modify: `skills/scope-lock/SKILL.md`
 
-**Step 1: Update the skill with the new commands.**
-
-Add a section after "Completing a Locked Plan":
+**Step 1: Update the skill** by adding two sections after `## Completing a Locked Plan`:
 
 ```markdown
 ## Claiming an Existing Lock (resume after restart)
@@ -1413,63 +955,60 @@ When a session is interrupted (computer restart, host crash, accidental
 `/clear`) and a fresh session needs to resume work on an already-locked plan,
 the new session must explicitly **claim** the lock for itself. The nag hooks
 only fire for plans attributed to the current session via
-`.claude/autodev-state/session-locks.jsonl`, and that attribution is per-session
-— a fresh session inherits no attribution from the killed one.
+`.claude/autodev-state/session-locks.jsonl`; that attribution is per-session
+and does not survive across sessions.
 
-```bash
+`​`​`bash
 bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-claim" docs/plans/<plan>.md
-```
+`​`​`
 
-The helper verifies the plan is `**Status:** Locked`, has a `.scope-lock`
-sidecar, and that the manifest hash still matches (claiming a drifted manifest
-is rejected — go through the amendment path instead). The session-attribution
-row is appended to `session-locks.jsonl` by `hooks/pre-tool-scope-guard`'s
-`record_session_lock` recognizer (the same mechanism that writes the row at
-`scope-lock-apply` time). Idempotent — re-claiming the same plan is a no-op.
+The helper verifies the plan is Locked, has a `.scope-lock` sidecar, and that
+the manifest hash still matches (drift is rejected — use the amendment path).
+The session-attribution row is appended to `session-locks.jsonl` by
+`hooks/pre-tool-scope-guard`'s `record_session_lock` recognizer — the same
+mechanism that writes the row at `scope-lock-apply` time. Idempotent.
 
 ## Abandoning a Lock (stopped pursuing)
 
 When work on a locked plan will not complete (user pivoted, design superseded,
-out of capacity), close the lock as **Abandoned** rather than leaving stale
-state:
+out of capacity), close the lock as Abandoned rather than leaving stale state:
 
-```bash
+`​`​`bash
 bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-abandon" docs/plans/<plan>.md \
     --reason "user pivoted away from feature X"
-```
+`​`​`
 
 Differs from `scope-lock-complete`:
 
-- Does NOT verify the manifest hash. Drift is expected for abandoned work.
-- Flips `Status:` to `Abandoned <UTC> — <reason>` instead of `Complete <UTC>`.
-- Requires `--reason` (non-empty); the value is sanitized to a single line,
-  capped at 200 chars, with literal `**` replaced by `__`.
-- Appends `phase-progress.jsonl` with `st:"abandoned"` + the reason so retros
-  can distinguish abandoned work from completed work.
+- Does NOT verify the manifest hash. Drift is expected.
+- Flips `Status:` to `Abandoned <UTC> — <reason>`.
+- Requires `--reason` (non-empty); sanitized to single line, capped at 200
+  chars, with `**` replaced by `__`.
+- Appends `phase-progress.jsonl` with `st:"abandoned"` + reason.
 - Does NOT write an ADR.
 
-Abandoned plans are not auto-revivable. If the operator changes their mind,
-edit the status line back to `Locked YYYY-MM-DDTHH:MM:SSZ` by hand and re-run
-`scope-lock-apply` to create a fresh `.scope-lock` file. The original lock
-hash is unrecoverable.
+Abandoned plans are not auto-revivable. To restart abandoned work, edit the
+status line back to Locked by hand and re-run `scope-lock-apply`; the original
+lock hash is unrecoverable.
 ```
 
-Also update the "## Lock state machine" diagram and lists to mention the `Abandoned` terminal state.
+(Replace `​` with nothing — the zero-width joiners above prevent the rendered
+plan-doc parser from confusing nested fences with this plan's own fences.)
 
-In the **Reads/Writes** section under `## Integration`, add `hooks/scope-lock-claim`, `hooks/scope-lock-abandon`, and note that `pre-tool-scope-guard`'s `SESSION_LOCK_RECOGNIZED` variable is the source of truth for which helper names update session-lock state.
+Update the `## Lock state machine` diagram to add an `Abandoned` terminal state alongside `Complete`. In `## Integration` → **Reads/Writes**, add `hooks/scope-lock-claim`, `hooks/scope-lock-abandon`, and note that `pre-tool-scope-guard`'s `SESSION_LOCK_RECOGNIZED` variable is the source of truth for which helper names update session-lock state.
 
-**Step 2: Render preview (docs verification).**
+**Step 2: Sanity-check the SKILL.md additions.**
 
-Run: `cat skills/scope-lock/SKILL.md | head -200 | tail -60`
-Expected: Renders the new sections without broken markdown (no unmatched code fences, headings present).
+Run: `grep -q '^## Claiming an Existing Lock' skills/scope-lock/SKILL.md && grep -q '^## Abandoning a Lock' skills/scope-lock/SKILL.md && echo OK`
+Expected: `OK`
 
-**Step 3: Run the full test suite to confirm nothing regressed.**
+**Step 3: Run the full test suite.**
 
-Run: `bash tests/hook-contracts.sh`
-Expected: all PASS lines; no FAIL lines.
+Run: `bash tests/hook-contracts.sh 2>&1 | tee /tmp/hook-contracts.out; grep -c '^FAIL:' /tmp/hook-contracts.out`
+Expected: PASS lines for every test (existing + new), 0 FAIL.
 
-Run: `bash tests/skill-cross-refs.sh` (if present)
-Expected: all PASS or "no issues found".
+Run: `bash tests/plan-scope-check.sh --plan docs/plans/2026-05-26-session-scoped-lock-nag.md`
+Expected: exit 0, no output (or only PASS lines).
 
 **Step 4: Commit.**
 
@@ -1484,10 +1023,9 @@ git commit -m "docs(scope-lock): document scope-lock-claim and scope-lock-abando
 
 | Task | Class | Verification |
 |------|-------|-------------|
-| 1-4 | Hook / trigger / event handler | `bash tests/hook-contracts.sh` per-test grep; all PASS |
-| 5 | Hook / trigger / event handler | same |
-| 6-7 | Hook / trigger / event handler | same; helpers exit 0 with sentinel token in stdout |
-| 8 | Multi-component boundary | end-to-end test triplet (claim→nag, abandon→silence, fresh→silent) |
-| 9 | Documentation / comments | render preview + full test suite green |
+| 1-5 | Hook / trigger / event handler | per-test grep against `bash tests/hook-contracts.sh`; all PASS |
+| 6-7 | Hook / trigger / event handler | same; helper exits 0 with sentinel token in stdout |
+| 8 | Multi-component boundary | end-to-end triplet (claim→nag, abandon→silence, fresh→silent) |
+| 9 | Documentation / comments | grep anchor + full suite green |
 
-No tasks trigger `runtime-launch-validation` (no build/deploy/migration/startup-config changes). No `Rollback:` notes required at the task level. Plugin rollback is by revert + bump (covered in design's `## Rollback`).
+No tasks trigger `runtime-launch-validation` (no build/deploy/migration/startup-config changes). No per-task rollback notes required. Plugin rollback is by revert + bump (design `## Rollback`).
