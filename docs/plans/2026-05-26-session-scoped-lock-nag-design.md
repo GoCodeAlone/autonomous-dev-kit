@@ -42,6 +42,21 @@ No `docs/design-guidance.md`. Applicable durable canon:
 
 ## Approach
 
+### 0. Tighten the status-line grep (Critical pre-existing bug)
+
+All four nag hooks currently detect locked plans with `grep -q '\*\*Status:\*\* Locked'` (or `grep -rl` variants). That matches the substring **anywhere in the file**, including prose mentions of the literal status string. This design document itself triggers the bug because it discusses lock mechanics in its body. Live evidence: subagent stops invoked during adversarial review of this design were blocked by `subagent-scope-guard` falsely flagging this draft as a locked-without-hash plan.
+
+Fix in every hook (and the helpers that mirror the detection logic): replace the substring match with an anchored line-start match.
+
+```
+# old (substring; matches prose mentions)
+grep -q '\*\*Status:\*\* Locked' "$plan"
+# new (anchored; matches only the status line)
+grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$plan"
+```
+
+Same correction for the workspace-wide `grep -rl` calls — switch to `grep -lE '^\*\*Status:\*\*[[:space:]]+Locked'`. Regression test: a `Status: Draft` plan whose body literally quotes ``**Status:** Locked`` (this file is such a plan) produces no nag and no subagent block.
+
 ### 1. Strict session-scoped nag
 
 `prompt-strict-interpretation`, `pre-compact-snapshot`, `pre-tool-scope-guard`, and `subagent-scope-guard` all converge on a single rule:
@@ -62,6 +77,14 @@ Why route writes through `record_session_lock` rather than have the script write
 
 Idempotent: if the claim row already exists for `(session, plan)`, no duplicate is written. The current `record_session_lock` already writes one row per invocation; we add a dedupe pass at write time (cheap — typical file is <100 rows).
 
+**Claim verifies hash at claim time.** Claiming a drift-broken plan is strictly worse than refusing the claim: the session would inherit a lock whose manifest can never satisfy push/PR gates. `scope-lock-claim` therefore runs `tests/plan-scope-check.sh --verify-lock <plan>` before printing the recognized command; failure exits non-zero.
+
+**Why a new helper rather than re-running `scope-lock-apply`.** `scope-lock-apply` rewrites the `.scope-lock` file from the current manifest. If the manifest has drifted since the original lock, re-running apply would silently overwrite the original hash with the drifted one — exactly the silent rescoping the lock is meant to prevent. `scope-lock-claim` is read-only with respect to `.scope-lock` (it only writes to `session-locks.jsonl`), preserving the original-author hash.
+
+**Liveness check.** Claim ends with a read-back: after the command finishes, the helper re-reads `session-locks.jsonl` and exits non-zero if the just-claimed `(session, plan)` row is not present. Converts the "hook regex missed the new helper" silent failure into a loud failure, and gives the test that exercises claim a contract to assert.
+
+**Recognized-command list.** The set of helper names that `pre-tool-scope-guard`'s `record_session_lock` recognizes (`scope-lock-apply`, `scope-lock-claim`, and the cleanup recognizer for `scope-lock-abandon`) is centralized in a single bash variable at the top of the hook with an inline comment pointing back to this design. Helper script headers reciprocally name the hook that routes their session-lock write so a future maintainer can see the contract from either end.
+
 ### 3. `hooks/scope-lock-abandon <plan-path> --reason "<reason>"`
 
 Mirrors `scope-lock-complete` but skips manifest hash verification and uses a distinct lifecycle state. Verifies the plan exists and currently has `**Status:** Locked`. Flips status to `Abandoned <UTC> — <reason>`. Removes `.scope-lock`. Prunes JSONL rows for the plan across all sessions in `session-locks.jsonl` and `in-progress.jsonl`. Appends to `.autodev/state/phase-progress.jsonl`:
@@ -71,6 +94,10 @@ Mirrors `scope-lock-complete` but skips manifest hash verification and uses a di
 ```
 
 Distinct from `complete` so retros and dashboards can tell "verified done" from "stopped pursuing". `--reason` is required (empty string rejected); the value is recorded both in the status line and in the JSONL row.
+
+**Reason sanitization.** The status line must stay single-line for the `awk` status-flip pattern (mirrored from `scope-lock-complete`) to work. `--reason` is sanitized in the helper: embedded newlines and tabs collapse to single spaces, the value is truncated to 200 characters, and any literal `**` is replaced with `__` to prevent breaking the markdown bold of the surrounding status line. The sanitized form is recorded in both the status line and the JSONL row so the audit trail matches what users see.
+
+**No auto-ADR.** Abandon does not invoke `recording-decisions`. The audit row in `phase-progress.jsonl` and the `Abandoned … — <reason>` status line together cover the durable-record case. Forcing an ADR on every abandon would generate one-line ADRs whose only content duplicates the reason already in the status line. Operators who want a richer record can hand-write an ADR.
 
 ### 4. `subagent-scope-guard` session-aware refactor
 
@@ -136,16 +163,25 @@ None. All changes are local to the autodev plugin distribution. No runtime servi
 
 Hook integration tests in `tests/hook-contracts.sh` exercise the real bash hooks end-to-end against tmpdirs that simulate the `docs/plans/` + `.claude/autodev-state/` layout. No mocks at the bash/JSONL boundary. Tests cover:
 
+**Unit-level (one hook / one helper at a time):**
 - claim writes the row (via `pre-tool-scope-guard` regex match)
 - claim is idempotent
 - claim of a plan without `.scope-lock` is rejected
+- claim of a plan with manifest drift is rejected (hash mismatch at claim time)
 - abandon flips status, deletes lock, prunes session-locks + in-progress, appends phase-progress
-- abandon requires `--reason`
+- abandon requires `--reason`; empty string is rejected
 - abandon refuses a plan not in `Locked` status
+- abandon sanitizes multi-line `--reason` into single-line status
 - prompt-strict no longer falls back to single workspace lock (replaces existing fallback test)
 - pre-compact-snapshot no longer falls back to single workspace lock
 - subagent-scope-guard does not fire on workspace-only locks unattributed to the session
 - subagent-scope-guard still fires on the session-attributed lock when manifest drift is detected
+- all four hooks treat a plan that quotes `**Status:** Locked` inside prose but has `Status: Draft` on the actual status line as NOT locked (regression test for the anchored-grep fix)
+
+**End-to-end (observable user behavior the user asked for):**
+- claim → next `prompt-strict-interpretation` call emits the nag and references the claimed plan name (proves the "resume after restart" story works observably, not just at the row-write layer)
+- abandon → next `prompt-strict-interpretation` call emits no nag for the abandoned plan (proves the "clean up old noise" story works observably)
+- fresh session with no claim → no nag fires for any locked plan, regardless of workspace state (proves session-scoping holds without fallback)
 
 ## Assumptions
 
@@ -174,7 +210,8 @@ Top 3 doubts surfaced for the reviewer:
 
 Not a runtime-affecting change. Revert the merge commit. Marketplace bump PR reverts independently; users on the bumped plugin version see the new helpers as no-ops if they don't invoke them, and the nag behavior degrades safely to the prior workspace-fallback path only when the new pre-tool-scope-guard regex isn't installed — which means a revert restores prior behavior wholesale, no migration needed.
 
-## Open questions for adversarial review
+Abandoned plans are NOT auto-revivable. If a release regression makes the operator wish a plan had not been abandoned, the plan must be edited back to `**Status:** Locked YYYY-MM-DDTHH:MM:SSZ` by hand and re-hashed via `scope-lock-apply` (which will create a new `.scope-lock` file). The original lock hash is unrecoverable. This is intentional — abandon is a state termination, not a pause.
 
-- Should `scope-lock-claim` reject plans whose `.scope-lock` hash doesn't match (i.e. drift detected at claim time)? Today the design says claim only verifies that `.scope-lock` exists. Drift is caught later by `pre-tool-scope-guard`'s push/PR gate. Claiming a drift-broken plan is arguably worse than refusing the claim.
-- Should `scope-lock-abandon` write an ADR via `recording-decisions`? Today it does not — abandon is "stop pursuing", not a manifest amendment. But operators may want a durable record. Argue both sides.
+## Adversarial review backport (2026-05-26)
+
+Inline adversarial review (subagent stops were swallowed by the very bug the design fixes — live demonstration of the substring grep false positive) produced one Critical and five Important findings. All resolved in §Approach 0 (anchored grep), §Approach 2 (claim hash check + re-apply rationale + liveness check + centralized recognized-command list), §Approach 3 (reason sanitization, no auto-ADR), §Multi-component validation (added end-to-end nag-fires / nag-silenced tests + anchored-grep regression test), and §Rollback (un-abandon limitation). Open questions resolved inline: claim verifies hash at claim time; abandon does NOT write an ADR.
