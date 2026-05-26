@@ -120,7 +120,7 @@ jobs:
             echo "PR already open for $BRANCH (#$existing); skipping creation."
             exit 0
           fi
-          body=$(printf 'Automated version bump to `%s`.\n\nWhen this PR merges, the `Release Tag` workflow will create tag `v%s` and dispatch the `autodev-version-bump` event to `GoCodeAlone/claude-marketplace`.\n' "$TARGET_VERSION" "$TARGET_VERSION")
+          body=$(printf 'Automated version bump to `%s`.\n\nWhen this PR merges, the `Release Tag` workflow will create tag `v%s` and dispatch the `autodev-version-bump` event to `GoCodeAlone/autodev-marketplace`.\n' "$TARGET_VERSION" "$TARGET_VERSION")
           gh pr create \
             --base main \
             --head "$BRANCH" \

@@ -1,5 +1,15 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.0.2 (2026-05-26)
+
+### Marketplace rename
+
+- Renamed the Claude Code/Codex marketplace from `claude-marketplace` to
+  `autodev-marketplace` because Claude Code rejects marketplace names that
+  impersonate official Anthropic/Claude marketplaces.
+- Updated README install/remove commands and release dispatch workflow targets
+  to use `GoCodeAlone/autodev-marketplace`.
+
 ## v6.0.1 (2026-05-26)
 
 ### Documentation
@@ -26,7 +36,7 @@
 - Renamed the entry skill from `using-superpowers` to `using-autodev`.
 - Updated author metadata to Jon Langevin / `jon@gocodealone.com`.
 - Updated repository references to `GoCodeAlone/autonomous-dev-kit`.
-- Updated the Claude marketplace target to `GoCodeAlone/claude-marketplace`.
+- Updated the Autodev marketplace target to `GoCodeAlone/autodev-marketplace`.
 
 ### Hook and workflow hardening
 
@@ -1055,8 +1065,8 @@ This release includes:
 
 ```bash
 # In Claude Code
-/plugin marketplace add GoCodeAlone/claude-marketplace
-/plugin install autodev@claude-marketplace
+/plugin marketplace add GoCodeAlone/autodev-marketplace
+/plugin install autodev@autodev-marketplace
 ```
 
 The plugin handles everything automatically.

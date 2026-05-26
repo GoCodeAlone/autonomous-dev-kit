@@ -58,7 +58,7 @@ jobs:
           git push origin "v${TARGET_VERSION}"
           echo "created=true" >> "$GITHUB_OUTPUT"
 
-      - name: Notify claude-marketplace
+      - name: Notify autodev-marketplace
         if: steps.tag.outputs.created == 'true'
         env:
           REPO_DISPATCH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN }}
@@ -71,7 +71,7 @@ jobs:
           response=$(curl -sL -w "\n%{http_code}" -X POST \
             -H "Authorization: token ${REPO_DISPATCH_TOKEN}" \
             -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/GoCodeAlone/claude-marketplace/dispatches \
+            https://api.github.com/repos/GoCodeAlone/autodev-marketplace/dispatches \
             -d "{\"event_type\": \"autodev-version-bump\", \"client_payload\": {\"version\": \"${TARGET_VERSION}\"}}")
           http_code=$(echo "$response" | tail -1)
           body=$(echo "$response" | head -n -1)
@@ -79,4 +79,4 @@ jobs:
             echo "ERROR: marketplace dispatch failed (HTTP ${http_code}): ${body}" >&2
             exit 1
           fi
-          echo "Dispatched autodev-version-bump event to GoCodeAlone/claude-marketplace (HTTP ${http_code})"
+          echo "Dispatched autodev-version-bump event to GoCodeAlone/autodev-marketplace (HTTP ${http_code})"

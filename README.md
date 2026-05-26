@@ -40,10 +40,10 @@ Then in a fresh session, add the GoCodeAlone marketplace and install:
 
 ```bash
 # 4. Register the GoCodeAlone marketplace
-/plugin marketplace add GoCodeAlone/claude-marketplace
+/plugin marketplace add GoCodeAlone/autodev-marketplace
 
 # 5. Install the plugin
-/plugin install autodev@claude-marketplace
+/plugin install autodev@autodev-marketplace
 ```
 
 Alternatively, install the skills directly with the open Skills CLI:
@@ -87,8 +87,8 @@ Codex plugin wrapper, hooks, plugin trust state, or marketplace config. For the
 full Codex plugin install, use Codex's native plugin commands:
 
 ```bash
-codex plugin marketplace add GoCodeAlone/claude-marketplace
-codex plugin add autodev@claude-marketplace
+codex plugin marketplace add GoCodeAlone/autodev-marketplace
+codex plugin add autodev@autodev-marketplace
 ```
 
 To remove the old plugin first:
@@ -257,4 +257,4 @@ MIT License - see LICENSE file for details
 ## Support
 
 - **Issues**: https://github.com/GoCodeAlone/autonomous-dev-kit/issues
-- **Marketplace**: https://github.com/GoCodeAlone/claude-marketplace
+- **Marketplace**: https://github.com/GoCodeAlone/autodev-marketplace
