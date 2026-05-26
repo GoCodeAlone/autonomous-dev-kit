@@ -30,6 +30,15 @@ run_hook() {
   printf '%s' "$payload" | "hooks/${hook}"
 }
 
+run_hook_wrapper() {
+  local hook="$1"
+  local payload="$2"
+  local stdout_file="$3"
+  local stderr_file="$4"
+  env LC_ALL=C.UTF-8 LANG=C.UTF-8 LC_CTYPE=C.UTF-8 \
+    hooks/run-hook.cmd "$hook" >"$stdout_file" 2>"$stderr_file" <<<"$payload"
+}
+
 assert_hook_context_json() {
   local name="$1"
   local event="$2"
@@ -55,6 +64,24 @@ test_session_start_json() {
   local output
   output="$(run_hook session-start '{"source":"startup","cwd":"'"$REPO_ROOT"'"}')"
   assert_hook_context_json "session-start" "SessionStart" "$output"
+}
+
+test_wrapper_suppresses_unavailable_c_utf8_locale_noise() {
+  local tmp stdout_file stderr_file stderr_text stdout_text
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  stdout_file="$tmp/stdout.json"
+  stderr_file="$tmp/stderr.txt"
+
+  run_hook_wrapper session-start '{"source":"startup","cwd":"'"$REPO_ROOT"'"}' "$stdout_file" "$stderr_file"
+  stdout_text="$(cat "$stdout_file")"
+  stderr_text="$(cat "$stderr_file")"
+
+  if [ -n "$stderr_text" ]; then
+    fail "run-hook.cmd: expected no stderr for unsupported C.UTF-8 locale, got: ${stderr_text}"
+    return
+  fi
+  assert_hook_context_json "run-hook.cmd session-start" "SessionStart" "$stdout_text"
 }
 
 test_prompt_strict_json() {
@@ -361,6 +388,7 @@ JSONL
 
 require_jq
 test_session_start_json
+test_wrapper_suppresses_unavailable_c_utf8_locale_noise
 test_prompt_strict_json
 test_prompt_strict_no_output_without_trigger
 test_pretool_pr_review_json

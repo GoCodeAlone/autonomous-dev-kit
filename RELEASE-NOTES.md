@@ -1,5 +1,16 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.0.3 (2026-05-26)
+
+### Hook JSON reliability
+
+- Normalized unavailable `C.UTF-8` locale settings in the shared hook wrapper
+  before launching hook scripts. This prevents bash locale warnings on stderr
+  from corrupting strict hook JSON parsing on systems such as macOS.
+- Added a hook-contract regression that runs through `hooks/run-hook.cmd` with
+  `LC_ALL=C.UTF-8`, `LANG=C.UTF-8`, and `LC_CTYPE=C.UTF-8` and verifies the
+  wrapper emits valid JSON with no stderr noise.
+
 ## v6.0.2 (2026-05-26)
 
 ### Marketplace rename
