@@ -25,12 +25,40 @@ hook_input=$(cat || true)
 
 cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
 [ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+session_key=""
+[ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
 
 # ── Find locked plans and collect their state ─────────────────────────────────
 plans_dir="${cwd_dir}/docs/plans"
 state_section=""
 
 if [ -d "$plans_dir" ]; then
+    locked_plan_stream() {
+        if [ -n "$session_key" ]; then
+            local state_file="${cwd_dir}/.claude/autodev-state/session-locks.jsonl"
+            [ -f "$state_file" ] || return 0
+            jq -r --arg session "$session_key" \
+                'select(.ev == "session-lock" and .session == $session) | .pl' \
+                "$state_file" 2>/dev/null \
+                | awk 'NF && !seen[$0]++' \
+                | while IFS= read -r plan; do
+                    [ -n "$plan" ] || continue
+                    case "$plan" in
+                        /*) resolved="$plan" ;;
+                        *) resolved="${cwd_dir}/${plan}" ;;
+                    esac
+                    [ -f "$resolved" ] || continue
+                    grep -q '\*\*Status:\*\* Locked' "$resolved" 2>/dev/null || continue
+                    printf '%s\n' "$resolved"
+                done
+            return 0
+        fi
+
+        grep -rl '\*\*Status:\*\* Locked' "$plans_dir" 2>/dev/null \
+            | grep '\.md$' | grep -v '\.scope-lock' | sort || true
+    }
+
     while IFS= read -r plan; do
         [ -z "$plan" ] && continue
         plan_name=$(basename "$plan")
@@ -61,13 +89,11 @@ if [ -d "$plans_dir" ]; then
             pending_entries="${pending_entries:-}${entry}
 "
         fi
-    done < <(find "$plans_dir" -maxdepth 1 -name '*.md' \
-        ! -name '*-design.md' ! -name 'README.md' 2>/dev/null \
-        | grep -v '\.scope-lock' | sort || true)
+    done < <(locked_plan_stream)
 fi
 
 if [ -z "$state_section" ]; then
-    # No plans found — nothing to snapshot. Exit silently.
+    # No active locked plans found — nothing to snapshot. Exit silently.
     exit 0
 fi
 
@@ -75,7 +101,6 @@ fi
 STATE_DIR="${cwd_dir}/.claude/autodev-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 STATE_FILE="${STATE_DIR}/in-progress.jsonl"
-LOCK_FILE="${STATE_DIR}/.in-progress.lock"
 
 ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 

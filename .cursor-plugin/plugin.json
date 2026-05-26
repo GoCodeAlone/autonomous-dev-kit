@@ -2,7 +2,7 @@
   "name": "autodev",
   "displayName": "Autonomous Dev Kit",
   "description": "Autonomous development workflow skills for coding agents",
-  "version": "6.0.4",
+  "version": "6.0.5",
   "author": {
     "name": "Jon Langevin",
     "email": "jon@gocodealone.com"

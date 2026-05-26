@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# hooks/scope-lock-complete
+# Marks a locked autodev plan complete and removes active lock traces.
+#
+# Usage:
+#   hooks/scope-lock-complete docs/plans/example.md --evidence "tests pass"
+#
+# Global opt-out: set SUPERPOWERS_HOOKS_DISABLE=1
+
+set -euo pipefail
+
+[ "${SUPERPOWERS_HOOKS_DISABLE:-}" = "1" ] && exit 0
+
+plan="${1:-}"
+[ -n "$plan" ] || {
+    printf 'scope-lock-complete: missing plan path\n' >&2
+    exit 2
+}
+shift || true
+
+evidence=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --evidence)
+            shift
+            evidence="${1:-}"
+            ;;
+        *)
+            printf 'scope-lock-complete: unknown argument: %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+    shift || true
+done
+
+case "$plan" in
+    /*) plan_abs="$plan" ;;
+    *) plan_abs="${PWD}/${plan}" ;;
+esac
+
+[ -f "$plan_abs" ] || {
+    printf 'scope-lock-complete: plan not found: %s\n' "$plan_abs" >&2
+    exit 2
+}
+
+if ! grep -q '\*\*Status:\*\* Locked' "$plan_abs" 2>/dev/null; then
+    printf 'scope-lock-complete: plan is not locked: %s\n' "$plan_abs" >&2
+    exit 2
+fi
+
+plan_dir=$(cd "$(dirname "$plan_abs")" && pwd)
+repo_root=$(cd "${plan_dir}/../.." && pwd)
+plan_name=$(basename "$plan_abs")
+plan_rel="docs/plans/${plan_name}"
+lock_file="${plan_abs}.scope-lock"
+checker="${repo_root}/tests/plan-scope-check.sh"
+
+if [ -x "$checker" ] && [ -f "$lock_file" ]; then
+    bash "$checker" --verify-lock "$plan_abs" >/dev/null
+fi
+
+ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+tmp_file=$(mktemp)
+awk -v ts="$ts" '
+    !done && /^\*\*Status:\*\* Locked/ {
+        print "**Status:** Complete " ts
+        done = 1
+        next
+    }
+    { print }
+' "$plan_abs" > "$tmp_file"
+mv "$tmp_file" "$plan_abs"
+rm -f "$lock_file"
+
+prune_jsonl() {
+    local file="$1"
+    [ -f "$file" ] || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+    local tmp
+    tmp=$(mktemp)
+    jq -c \
+        --arg name "$plan_name" \
+        --arg rel "$plan_rel" \
+        --arg abs "$plan_abs" \
+        'select((.pl? // "") != $name and (.pl? // "") != $rel and (.pl? // "") != $abs)' \
+        "$file" > "$tmp" 2>/dev/null || {
+            rm -f "$tmp"
+            return 0
+        }
+    mv "$tmp" "$file"
+}
+
+prune_jsonl "${repo_root}/.claude/autodev-state/session-locks.jsonl"
+prune_jsonl "${repo_root}/.claude/autodev-state/in-progress.jsonl"
+
+progress_dir="${repo_root}/.autodev/state"
+mkdir -p "$progress_dir" 2>/dev/null || true
+if command -v jq >/dev/null 2>&1; then
+    jq -nc \
+        --arg ts "$ts" \
+        --arg pl "$plan_name" \
+        --arg e "$evidence" \
+        '{ts:$ts,ev:"plan",pl:$pl,st:"complete"} + (if $e != "" then {e:$e} else {} end)' \
+        >> "${progress_dir}/phase-progress.jsonl" 2>/dev/null || true
+fi
+
+printf 'Completed %s and removed %s\n' "$plan_rel" "$(basename "$lock_file")"

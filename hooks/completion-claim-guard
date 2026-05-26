@@ -139,7 +139,7 @@ If this is only a phase/task completion:
   - Continue automatically into the next phase/task from the Scope Manifest.
 
 Only stop if one of these is true:
-  - The entire locked design is complete and verified.
+  - The entire locked design is complete and verified; run hooks/scope-lock-complete <plan> --evidence \"<verification>\" to mark it complete and remove lock traces.
   - There is a hard blocker that requires human input.
   - The next action is a production deploy or destructive production change without already-recorded human approval.
 

@@ -162,6 +162,25 @@ Cheap manifest edits = no lock at all.
 - **Silently dropping a task because it turned out to be hard.** That's the amendment path's job. A unilateral skip is a contract breach.
 - **"Demo" framing.** Once the manifest is locked, there is no demo mode. Either you ship the contract or you go through the amendment path. "Let me just get something working" is exactly the rationalization this skill blocks.
 
+## Completing a Locked Plan
+
+When the whole locked design is genuinely complete and verified, close the lock
+instead of leaving stale reminders in the workspace:
+
+```bash
+hooks/scope-lock-complete docs/plans/<plan>.md --evidence "<verification summary>"
+```
+
+The helper verifies the current manifest hash when the checker is available,
+changes the plan status from `Locked` to `Complete <UTC>`, removes
+`<plan>.scope-lock`, prunes matching `.claude/autodev-state/session-locks.jsonl`
+and lock snapshot rows, and appends a compact completion row to
+`.autodev/state/phase-progress.jsonl`.
+
+Do not manually edit `.scope-lock` files or leave a completed design in
+`Locked` state. Stale locks cause future prompt/stop/pre-compact hooks to
+re-attach old plans to unrelated work.
+
 ## Integration
 
 **Called by:**
@@ -180,8 +199,10 @@ Cheap manifest edits = no lock at all.
 - `git log --oneline <base>..HEAD` — actual commits to compare against the manifest.
 
 **Writes:**
-- `docs/plans/<plan>.md` — the `**Status:**` line, on lock or reduce.
+- `docs/plans/<plan>.md` — the `**Status:**` line, on lock, reduce, or complete.
 - `docs/plans/<plan>.md.scope-lock` — the manifest hash file.
+- `.claude/autodev-state/*.jsonl` — session lock traces, pruned on completion.
+- `.autodev/state/phase-progress.jsonl` — compact completion row.
 - (via `recording-decisions`) `decisions/NNNN-scope-amendment-<feature>.md`.
 
 ## Why a separate skill
