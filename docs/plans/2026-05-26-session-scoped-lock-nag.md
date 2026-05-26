@@ -31,7 +31,7 @@
 |------|-------|-------|--------|
 | 1 | feat(scope-lock): session-scoped nag + claim/abandon helpers | Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7, Task 8, Task 9 | feat/session-scoped-lock-nag-2026-05-26 |
 
-**Status:** Draft
+**Status:** Locked 2026-05-26T19:30:00Z
 
 ---
 
