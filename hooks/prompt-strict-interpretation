@@ -26,6 +26,9 @@ prompt=$(printf '%s' "$hook_input" | jq -r '.prompt // empty' 2>/dev/null || tru
 
 cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
 [ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+session_key=""
+[ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
 
 # ── Check for trigger phrases ────────────────────────────────────────────────
 # These are phrases that agents have used as license to rescope on a locked plan.
@@ -92,8 +95,50 @@ locked_plan=""
 locked_plan_name=""
 
 if [ -d "$plans_dir" ]; then
-    locked_plan=$(grep -rl '\*\*Status:\*\* Locked' "$plans_dir" 2>/dev/null \
-        | grep '\.md$' | grep -v '\.scope-lock' | head -1 || true)
+    workspace_locked_plans() {
+        find "$plans_dir" -maxdepth 1 -name '*.md' \
+            ! -name '*-design.md' ! -name 'README.md' 2>/dev/null \
+            | grep -v '\.scope-lock' \
+            | sort \
+            | while IFS= read -r plan; do
+                [ -n "$plan" ] || continue
+                grep -q '\*\*Status:\*\* Locked' "$plan" 2>/dev/null || continue
+                printf '%s\n' "$plan"
+            done
+    }
+
+    session_locked_plans() {
+        local state_file="${cwd_dir}/.claude/autodev-state/session-locks.jsonl"
+        [ -f "$state_file" ] || return 0
+        jq -r --arg session "$session_key" \
+            'select(.ev == "session-lock" and .session == $session) | .pl // empty' \
+            "$state_file" 2>/dev/null \
+            | awk 'NF && !seen[$0]++' \
+            | while IFS= read -r plan; do
+                [ -n "$plan" ] || continue
+                case "$plan" in
+                    /*) resolved="$plan" ;;
+                    *) resolved="${cwd_dir}/${plan}" ;;
+                esac
+                [ -f "$resolved" ] || continue
+                grep -q '\*\*Status:\*\* Locked' "$resolved" 2>/dev/null || continue
+                printf '%s\n' "$resolved"
+            done
+    }
+
+    if [ -n "$session_key" ]; then
+        session_plans=$(session_locked_plans)
+        if [ -n "$session_plans" ]; then
+            locked_plan=$(printf '%s\n' "$session_plans" | head -1)
+        else
+            workspace_plans=$(workspace_locked_plans)
+            if [ "$(printf '%s\n' "$workspace_plans" | awk 'NF {count++} END {print count+0}')" -eq 1 ]; then
+                locked_plan=$(printf '%s\n' "$workspace_plans" | head -1)
+            fi
+        fi
+    else
+        locked_plan=$(workspace_locked_plans | head -1 || true)
+    fi
 fi
 
 # No locked plan — the invariant only applies under a lock.

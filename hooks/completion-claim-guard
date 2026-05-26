@@ -61,11 +61,23 @@ plans_dir="${cwd_dir}/docs/plans"
 [ -d "$plans_dir" ] || exit 0
 
 find_locked_plans() {
-    if [ -n "$session_key" ]; then
+    workspace_locked_plans() {
+        find "$plans_dir" -maxdepth 1 -name '*.md' \
+            ! -name '*-design.md' ! -name 'README.md' 2>/dev/null \
+            | grep -v '\.scope-lock' \
+            | sort \
+            | while IFS= read -r plan; do
+                [ -n "$plan" ] || continue
+                grep -q '\*\*Status:\*\* Locked' "$plan" 2>/dev/null || continue
+                printf '%s\n' "$plan"
+            done
+    }
+
+    session_locked_plans() {
         local state_file="${cwd_dir}/.claude/autodev-state/session-locks.jsonl"
         [ -f "$state_file" ] || return 0
         jq -r --arg session "$session_key" \
-            'select(.ev == "session-lock" and .session == $session) | .pl' \
+            'select(.ev == "session-lock" and .session == $session) | .pl // empty' \
             "$state_file" 2>/dev/null \
             | awk 'NF && !seen[$0]++' \
             | while IFS= read -r plan; do
@@ -78,11 +90,22 @@ find_locked_plans() {
                 grep -q '\*\*Status:\*\* Locked' "$resolved" 2>/dev/null || continue
                 printf '%s\n' "$resolved"
             done
+    }
+
+    if [ -n "$session_key" ]; then
+        session_plans=$(session_locked_plans)
+        if [ -n "$session_plans" ]; then
+            printf '%s\n' "$session_plans"
+            return 0
+        fi
+        workspace_plans=$(workspace_locked_plans)
+        if [ "$(printf '%s\n' "$workspace_plans" | awk 'NF {count++} END {print count+0}')" -eq 1 ]; then
+            printf '%s\n' "$workspace_plans"
+        fi
         return 0
     fi
 
-    grep -rl '\*\*Status:\*\* Locked' "$plans_dir" 2>/dev/null \
-        | grep '\.md$' | grep -v '\.scope-lock' || true
+    workspace_locked_plans
 }
 
 locked_plans=$(find_locked_plans)
@@ -139,7 +162,7 @@ If this is only a phase/task completion:
   - Continue automatically into the next phase/task from the Scope Manifest.
 
 Only stop if one of these is true:
-  - The entire locked design is complete and verified.
+  - The entire locked design is complete and verified; run bash \"\${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-complete\" <plan> --evidence \"<verification>\" to mark it complete and remove lock traces.
   - There is a hard blocker that requires human input.
   - The next action is a production deploy or destructive production change without already-recorded human approval.
 

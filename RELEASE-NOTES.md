@@ -1,5 +1,22 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.0.5 (2026-05-26)
+
+### Scope-lock completion cleanup
+
+- Added `hooks/scope-lock-complete` so completed locked plans can be marked
+  `Complete <UTC>`, have their `.scope-lock` file removed, and prune session
+  lock/snapshot traces.
+- Scoped strict prompt reminders to session-owned locked plans when the host
+  provides a transcript path, preventing unrelated historical locks from
+  attaching to new autonomous work.
+- Changed PreCompact snapshots to include only active locked plans, reducing
+  oversized hook JSON in repositories with many old plan documents.
+- Clarified that adversarial design/plan review should dispatch a subagent with
+  the full adversarial prompt whenever the host exposes subagent support.
+- Added hook-contract regressions for completion cleanup, session-scoped prompt
+  reminders, and locked-only PreCompact snapshots.
+
 ## v6.0.4 (2026-05-26)
 
 ### Stop-hook feedback formatting
