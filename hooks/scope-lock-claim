@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# hooks/scope-lock-claim
+# Attribute an existing locked plan to the current session so the locked-plan
+# nag hooks (prompt-strict-interpretation, pre-compact-snapshot,
+# pre-tool-scope-guard, subagent-scope-guard, completion-claim-guard) fire for
+# this session.
+#
+# Use case: an agent session was interrupted (computer restart, host crash,
+# accidental /clear) and a fresh session needs to resume the same work. The
+# .scope-lock file is still on disk, but the new session is not in
+# .claude/autodev-state/session-locks.jsonl. Running this helper attributes the
+# lock to the current session.
+#
+# Usage: scope-lock-claim <plan-path>
+#
+# Verifies:
+#   1. The plan exists and has a line-start "**Status:** Locked ...".
+#   2. A .scope-lock sidecar exists (no claim without an anchor).
+#   3. tests/plan-scope-check.sh --verify-lock passes when available -
+#      claiming a drifted manifest is strictly worse than refusing.
+#
+# The actual session-locks.jsonl write is performed by
+# hooks/pre-tool-scope-guard's record_session_lock, which intercepts this Bash
+# invocation and recognizes the helper name in SESSION_LOCK_RECOGNIZED. This
+# helper is read-only with respect to .scope-lock: re-running scope-lock-apply
+# would silently overwrite the original author's hash, defeating the lock.
+
+set -euo pipefail
+
+plan="${1:-}"
+
+if [ -z "$plan" ]; then
+    printf 'Usage: scope-lock-claim <plan-path>\n' >&2
+    exit 3
+fi
+if [ ! -f "$plan" ]; then
+    printf 'Error: plan file not found: %s\n' "$plan" >&2
+    exit 1
+fi
+if ! grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$plan"; then
+    printf 'Error: plan is not in Locked status: %s\n' "$plan" >&2
+    exit 1
+fi
+lock_file="${plan}.scope-lock"
+if [ ! -f "$lock_file" ]; then
+    printf 'Error: no .scope-lock sidecar for %s - nothing to claim\n' "$plan" >&2
+    exit 1
+fi
+
+# Drift check (only when the checker is available; absence is not a failure).
+plan_dir=$(cd "$(dirname "$plan")" 2>/dev/null && pwd -P) || plan_dir=""
+if [ -n "$plan_dir" ]; then
+    for d in "${plan_dir}/../../tests" "${plan_dir}/../tests" "./tests"; do
+        candidate="${d}/plan-scope-check.sh"
+        if [ -x "$candidate" ]; then
+            if ! bash "$candidate" --verify-lock "$plan" >/dev/null 2>&1; then
+                printf 'Error: manifest drift detected for %s - refusing claim (run scope-lock amendment path)\n' "$plan" >&2
+                exit 1
+            fi
+            break
+        fi
+    done
+fi
+
+# Sentinel token for pre-tool-scope-guard's record_session_lock recognizer.
+# The helper's basename appears in the printed line so SESSION_LOCK_RECOGNIZED
+# matches the Bash tool command "bash hooks/scope-lock-claim <plan>" even if
+# this script's own stdout is captured by the caller.
+printf 'scope-lock-claim: attributing %s to current session\n' "$plan"
+exit 0

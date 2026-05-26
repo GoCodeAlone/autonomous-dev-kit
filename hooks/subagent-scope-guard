@@ -25,6 +25,9 @@ hook_input=$(cat || true)
 
 cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
 [ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+session_key=""
+[ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
 
 stop_hook_active=$(printf '%s' "$hook_input" | jq -r '.stop_hook_active // false' 2>/dev/null || echo "false")
 [ "$stop_hook_active" = "true" ] && exit 0
@@ -70,10 +73,40 @@ if command -v git >/dev/null 2>&1; then
 
         # Locked plan files may be edited for design backports or notes, but
         # their Scope Manifest hash must still match the lock file.
+        # Plans are filtered to the current session's attribution when the host
+        # exposes transcript_path; otherwise (host has no session identity)
+        # we fall back to workspace-wide scan.
+        find_session_locked_plans() {
+            local state_file="${cwd_dir}/.claude/autodev-state/session-locks.jsonl"
+            [ -f "$state_file" ] || return 0
+            jq -r --arg session "$session_key" \
+                'select(.ev == "session-lock" and .session == $session) | .pl // empty' \
+                "$state_file" 2>/dev/null \
+                | awk 'NF && !seen[$0]++' \
+                | while IFS= read -r plan; do
+                    [ -n "$plan" ] || continue
+                    case "$plan" in
+                        /*) resolved="$plan" ;;
+                        *) resolved="${cwd_dir}/${plan}" ;;
+                    esac
+                    [ -f "$resolved" ] || continue
+                    grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$resolved" 2>/dev/null || continue
+                    printf '%s\n' "$resolved"
+                done
+        }
+
+        find_workspace_locked_plans() {
+            grep -rlE '^\*\*Status:\*\*[[:space:]]+Locked' "${cwd_dir}/docs/plans" 2>/dev/null \
+                | grep '\.md$' | grep -v '\.scope-lock' || true
+        }
+
         checker="${cwd_dir}/tests/plan-scope-check.sh"
         if [ -x "$checker" ] && [ -d "${cwd_dir}/docs/plans" ]; then
-            locked_plans=$(grep -rl '\*\*Status:\*\* Locked' "${cwd_dir}/docs/plans" 2>/dev/null \
-                | grep '\.md$' | grep -v '\.scope-lock' || true)
+            if [ -n "$session_key" ]; then
+                locked_plans=$(find_session_locked_plans)
+            else
+                locked_plans=$(find_workspace_locked_plans)
+            fi
             while IFS= read -r plan; do
                 [ -z "$plan" ] && continue
                 if ! bash "$checker" --verify-lock "$plan" >/dev/null 2>&1; then

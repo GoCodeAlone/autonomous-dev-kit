@@ -68,7 +68,7 @@ find_locked_plans() {
             | sort \
             | while IFS= read -r plan; do
                 [ -n "$plan" ] || continue
-                grep -q '\*\*Status:\*\* Locked' "$plan" 2>/dev/null || continue
+                grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$plan" 2>/dev/null || continue
                 printf '%s\n' "$plan"
             done
     }
@@ -93,15 +93,7 @@ find_locked_plans() {
     }
 
     if [ -n "$session_key" ]; then
-        session_plans=$(session_locked_plans)
-        if [ -n "$session_plans" ]; then
-            printf '%s\n' "$session_plans"
-            return 0
-        fi
-        workspace_plans=$(workspace_locked_plans)
-        if [ "$(printf '%s\n' "$workspace_plans" | awk 'NF {count++} END {print count+0}')" -eq 1 ]; then
-            printf '%s\n' "$workspace_plans"
-        fi
+        session_locked_plans
         return 0
     fi
 

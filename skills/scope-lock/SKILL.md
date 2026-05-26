@@ -82,6 +82,13 @@ backports and task notes outside the manifest do not change the lock hash.
 - **Complete**: the locked design is fully verified; `scope-lock-complete`
   verified the lock file, removed it, pruned reminder traces, and recorded
   completion evidence.
+- **Abandoned**: work on the locked design was stopped without completion
+  (user pivoted, design superseded, out of capacity). `scope-lock-abandon`
+  flipped the status to `Abandoned <UTC> — <reason>`, removed the
+  `.scope-lock` file, pruned session-lock + in-progress traces across all
+  sessions, and appended a compact `st:"abandoned"` row to
+  `phase-progress.jsonl`. Abandoned plans are not auto-revivable; reviving
+  requires manual edit back to `Locked` plus a fresh `scope-lock-apply`.
 
 There is no "Expanded" state by design. Adding scope mid-flight requires going back to Draft (re-do brainstorming for the new scope). This is intentional friction.
 
@@ -185,6 +192,55 @@ Do not manually edit `.scope-lock` files or leave a completed design in
 `Locked` state. Stale locks cause future prompt/stop/pre-compact hooks to
 re-attach old plans to unrelated work.
 
+## Claiming an Existing Lock (resume after restart)
+
+When a session is interrupted (computer restart, host crash, accidental
+`/clear`) and a fresh session needs to resume work on an already-locked plan,
+the new session must explicitly **claim** the lock for itself. The nag hooks
+fire only for plans attributed to the current session via
+`.claude/autodev-state/session-locks.jsonl`. That attribution is per-session
+and does not survive across sessions — a fresh agent inherits no rows from
+the killed one.
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-claim" docs/plans/<plan>.md
+```
+
+The helper verifies the plan is Locked, has a `.scope-lock` sidecar, and that
+the manifest hash still matches (drift is rejected — use the amendment path).
+The session-attribution row is appended to `session-locks.jsonl` by
+`hooks/pre-tool-scope-guard`'s `record_session_lock` recognizer — the same
+mechanism that writes the row at `scope-lock-apply` time. The recognized
+helper names are centralized in `pre-tool-scope-guard`'s
+`SESSION_LOCK_RECOGNIZED` variable. Claim is idempotent — re-claiming the
+same plan produces no duplicate row.
+
+## Abandoning a Lock (stopped pursuing)
+
+When work on a locked plan will not complete (user pivoted, design superseded,
+out of capacity), close the lock as **Abandoned** rather than leaving stale
+state:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-abandon" docs/plans/<plan>.md \
+    --reason "user pivoted away from feature X"
+```
+
+Differs from `scope-lock-complete`:
+
+- Does NOT verify the manifest hash. Drift is expected for abandoned work.
+- Flips `Status:` to `Abandoned <UTC> — <reason>`.
+- Requires `--reason` (non-empty); sanitized to a single line, capped at 200
+  chars, with literal `**` replaced by `__` so the status line's markdown
+  bold cannot be broken.
+- Appends `phase-progress.jsonl` with `st:"abandoned"` + the reason so retros
+  can distinguish abandoned work from completed work.
+- Does NOT write an ADR.
+
+Abandoned plans are not auto-revivable. To restart abandoned work, edit the
+status line back to `Locked YYYY-MM-DDTHH:MM:SSZ` by hand and re-run
+`scope-lock-apply` — the original lock hash is unrecoverable.
+
 ## Integration
 
 **Called by:**
@@ -201,13 +257,24 @@ re-attach old plans to unrelated work.
 - `docs/plans/<plan>.md` — the plan and its manifest.
 - `docs/plans/<plan>.md.scope-lock` — the manifest hash recorded at lock time.
 - `git log --oneline <base>..HEAD` — actual commits to compare against the manifest.
+- `.claude/autodev-state/session-locks.jsonl` — per-session lock attribution (nag scoping).
 
 **Writes:**
-- `docs/plans/<plan>.md` — the `**Status:**` line, on lock, reduce, or complete.
+- `docs/plans/<plan>.md` — the `**Status:**` line, on lock, reduce, complete, or abandon.
 - `docs/plans/<plan>.md.scope-lock` — the manifest hash file.
-- `.claude/autodev-state/*.jsonl` — session lock traces, pruned on completion.
-- `.autodev/state/phase-progress.jsonl` — compact completion row.
+- `.claude/autodev-state/*.jsonl` — session lock traces, pruned on completion or abandonment.
+- `.autodev/state/phase-progress.jsonl` — compact completion or abandonment row.
 - (via `recording-decisions`) `decisions/NNNN-scope-amendment-<feature>.md`.
+
+**Helpers (all under `hooks/`):**
+- `scope-lock-apply <plan>` — write the `.scope-lock` hash file (called by `alignment-check`).
+- `scope-lock-claim <plan>` — attribute an existing lock to the current session (resume after restart).
+- `scope-lock-complete <plan> --evidence "<verification>"` — close the lock as Complete.
+- `scope-lock-abandon <plan> --reason "<reason>"` — close the lock as Abandoned (no completion verification).
+
+The set of helper names that update `session-locks.jsonl` is centralized in
+`hooks/pre-tool-scope-guard`'s `SESSION_LOCK_RECOGNIZED` variable; helpers and
+hook share that contract.
 
 ## Why a separate skill
 
