@@ -36,6 +36,9 @@ hook_input=$(cat || true)
 tool_name=$(printf '%s' "$hook_input" | jq -r '.tool_name // empty' 2>/dev/null || true)
 cwd_dir=$(printf '%s'   "$hook_input" | jq -r '.cwd // empty'        2>/dev/null || true)
 [ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+session_key=""
+[ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
 
 # Output a block decision and exit 2 (the exit code Claude Code uses for blocks).
 block() {
@@ -45,12 +48,58 @@ block() {
     exit 2
 }
 
-# Return the path of the first locked plan found under docs/plans/, or empty.
-find_locked_plan() {
+record_session_lock() {
+    local cmd="$1"
+    [ -n "$session_key" ] || return 0
+    printf '%s' "$cmd" | grep -q 'scope-lock-apply' || return 0
+
+    local plan_arg=""
+    plan_arg=$(printf '%s' "$cmd" \
+        | sed -nE 's/.*scope-lock-apply[[:space:]]+"?([^" ;]+)"?.*/\1/p' \
+        | head -1 || true)
+    [ -n "$plan_arg" ] || return 0
+
+    local state_dir="${cwd_dir}/.claude/autodev-state"
+    mkdir -p "$state_dir" 2>/dev/null || return 0
+    local state_file="${state_dir}/session-locks.jsonl"
+    local ts
+    ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    jq -nc \
+        --arg ts "$ts" \
+        --arg session "$session_key" \
+        --arg pl "$plan_arg" \
+        '{ts:$ts,ev:"session-lock",session:$session,pl:$pl}' \
+        >> "$state_file" 2>/dev/null || true
+}
+
+# Return locked plans relevant to this session. If the host does not provide a
+# transcript path, fall back to the legacy workspace-wide scan.
+find_locked_plans() {
     local plans_dir="${cwd_dir}/docs/plans"
     [ -d "$plans_dir" ] || return 0
+
+    if [ -n "$session_key" ]; then
+        local state_file="${cwd_dir}/.claude/autodev-state/session-locks.jsonl"
+        [ -f "$state_file" ] || return 0
+        jq -r --arg session "$session_key" \
+            'select(.ev == "session-lock" and .session == $session) | .pl' \
+            "$state_file" 2>/dev/null \
+            | awk 'NF && !seen[$0]++' \
+            | while IFS= read -r plan; do
+                [ -n "$plan" ] || continue
+                case "$plan" in
+                    /*) resolved="$plan" ;;
+                    *) resolved="${cwd_dir}/${plan}" ;;
+                esac
+                [ -f "$resolved" ] || continue
+                grep -q '\*\*Status:\*\* Locked' "$resolved" 2>/dev/null || continue
+                printf '%s\n' "$resolved"
+            done
+        return 0
+    fi
+
     grep -rl '\*\*Status:\*\* Locked' "$plans_dir" 2>/dev/null \
-        | grep '\.md$' | grep -v '\.scope-lock' | head -1 || true
+        | grep '\.md$' | grep -v '\.scope-lock' || true
 }
 
 # Run plan-scope-check --verify-lock; returns 0 if hash matches.
@@ -88,6 +137,8 @@ case "$tool_name" in
     # ── Global opt-out (operator-level only, checked after self-bypass guard) ──
     [ "${SUPERPOWERS_HOOKS_DISABLE:-}" = "1" ] && exit 0
 
+    record_session_lock "$cmd"
+
     # ── 1. Force push (always blocked) ──────────────────────────────────────
     # Catches: --force, --force-with-lease, -f flag
     # These overwrite remote refs and lose commits for anyone who already pulled.
@@ -106,12 +157,12 @@ case "$tool_name" in
     # ── 3. push / PR creation while locked plan hash mismatches ─────────────
     # Catches post-lock plan tampering before anything reaches the remote.
     if printf '%s' "$cmd" | grep -qE '(git push|gh pr create|gh pr merge)'; then
-        locked_plan=$(find_locked_plan)
-        if [ -n "$locked_plan" ]; then
+        while IFS= read -r locked_plan; do
+            [ -n "$locked_plan" ] || continue
             if ! verify_lock "$locked_plan"; then
                 block "Locked plan hash mismatch: $(basename "$locked_plan") — the Scope Manifest has been modified since it was locked. This means either the manifest was edited without the amendment path or the scope-lock file was corrupted. Resolve via the scope-lock amendment path (recording-decisions → update manifest → re-run alignment-check) before pushing or creating PRs."
             fi
-        fi
+        done < <(find_locked_plans)
     fi
 
     # ── 4. Push/commit to default branch (blocked unless opt-out) ───────────
