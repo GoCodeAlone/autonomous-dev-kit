@@ -43,4 +43,16 @@ CMDBLOCK
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT_NAME="$1"
 shift
+
+# Some hosts start hooks with C.UTF-8 even on systems where that locale is not
+# installed (notably macOS). Bash then writes a locale warning to stderr before
+# the hook can emit its JSON response, which makes strict hook parsers reject the
+# output. Preserve valid locales, but fall back to C when C.UTF-8 is unavailable.
+if { [ "${LC_ALL:-}" = "C.UTF-8" ] || [ "${LC_CTYPE:-}" = "C.UTF-8" ] || [ "${LANG:-}" = "C.UTF-8" ]; } &&
+   ! LC_ALL=C locale -a 2>/dev/null | grep -Eiq '^(C\.UTF-8|C\.utf8)$'; then
+  [ "${LC_ALL:-}" = "C.UTF-8" ] && export LC_ALL=C
+  [ "${LC_CTYPE:-}" = "C.UTF-8" ] && export LC_CTYPE=C
+  [ "${LANG:-}" = "C.UTF-8" ] && export LANG=C
+fi
+
 exec bash "${SCRIPT_DIR}/${SCRIPT_NAME}" "$@"
