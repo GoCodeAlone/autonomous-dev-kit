@@ -5,6 +5,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
+export LC_ALL=C
+export LANG=C
+export LC_CTYPE=C
 
 failures=0
 
@@ -27,7 +30,7 @@ require_jq() {
 run_hook() {
   local hook="$1"
   local payload="$2"
-  printf '%s' "$payload" | "hooks/${hook}"
+  printf '%s' "$payload" | env LC_ALL=C LANG=C LC_CTYPE=C "hooks/${hook}"
 }
 
 run_hook_wrapper() {
@@ -125,15 +128,16 @@ test_prompt_strict_no_output_without_trigger() {
   pass "prompt-strict-interpretation: no output without trigger"
 }
 
-test_prompt_strict_ignores_unrelated_locked_plan_when_session_has_no_lock() {
+test_prompt_strict_ignores_ambiguous_workspace_locks_when_session_has_no_lock() {
   local tmp transcript output
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   transcript="$tmp/session.jsonl"
   touch "$transcript"
   mkdir -p "$tmp/docs/plans"
-  cat >"$tmp/docs/plans/unrelated.md" <<'PLAN'
-# Unrelated Plan
+  for name in one two; do
+    cat >"$tmp/docs/plans/${name}.md" <<PLAN
+# ${name} Plan
 
 ## Scope Manifest
 
@@ -146,20 +150,58 @@ test_prompt_strict_ignores_unrelated_locked_plan_when_session_has_no_lock() {
 
 | PR # | Title | Tasks | Branch |
 |------|-------|-------|--------|
-| 1 | Unrelated | Task 1 | feat/unrelated |
+| 1 | ${name} | Task 1 | feat/${name} |
 
 **Status:** Locked 2026-05-25T00:00:00Z
 
-### Task 1: Unrelated
+### Task 1: ${name}
 PLAN
-  bash hooks/scope-lock-apply "$tmp/docs/plans/unrelated.md" >/dev/null
+    bash hooks/scope-lock-apply "$tmp/docs/plans/${name}.md" >/dev/null
+  done
 
   output="$(run_hook prompt-strict-interpretation '{"prompt":"continue autonomously","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
   if [ -n "$output" ]; then
-    fail "prompt-strict-interpretation: expected unrelated workspace lock to be ignored for session, got: ${output}"
+    fail "prompt-strict-interpretation: expected ambiguous workspace locks to be ignored for session, got: ${output}"
     return
   fi
-  pass "prompt-strict-interpretation: ignores unrelated workspace lock when session has no lock"
+  pass "prompt-strict-interpretation: ignores ambiguous workspace locks when session has no lock"
+}
+
+test_prompt_strict_falls_back_to_single_workspace_lock() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans"
+  cat >"$tmp/docs/plans/active.md" <<'PLAN'
+# Active Plan
+
+## Scope Manifest
+
+**PR Count:** 1
+**Tasks:** 1
+**Out of scope:**
+- (none)
+
+**PR Grouping:**
+
+| PR # | Title | Tasks | Branch |
+|------|-------|-------|--------|
+| 1 | Active | Task 1 | feat/active |
+
+**Status:** Locked 2026-05-25T00:00:00Z
+
+### Task 1: Active
+PLAN
+  bash hooks/scope-lock-apply "$tmp/docs/plans/active.md" >/dev/null
+
+  output="$(run_hook prompt-strict-interpretation '{"prompt":"continue autonomously","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
+  if ! printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("active.md")' >/dev/null; then
+    fail "prompt-strict-interpretation: expected single workspace lock fallback, got: ${output}"
+    return
+  fi
+  pass "prompt-strict-interpretation: falls back to single workspace lock"
 }
 
 test_prompt_strict_uses_session_locked_plan_only() {
@@ -373,6 +415,9 @@ PLAN
   jq -nc --arg session "session.jsonl" --arg pl "docs/plans/example.md" \
     '{ev:"session-lock",session:$session,pl:$pl}' \
     > "$tmp/.claude/autodev-state/session-locks.jsonl"
+  jq -nc --arg session "other.jsonl" --arg pl "./docs/plans/example.md" \
+    '{ev:"session-lock",session:$session,pl:$pl}' \
+    >> "$tmp/.claude/autodev-state/session-locks.jsonl"
   jq -nc '{ev:"lock",pl:"example.md",st:"Locked 2026-05-25T00:00:00Z",h:"abc"}' \
     > "$tmp/.claude/autodev-state/in-progress.jsonl"
 
@@ -391,12 +436,196 @@ PLAN
     fail "scope-lock-complete: expected session lock trace to be pruned"
     return
   fi
+  if [ -s "$state_file" ] && jq -e 'select(.pl == "./docs/plans/example.md")' "$state_file" >/dev/null; then
+    fail "scope-lock-complete: expected equivalent relative session lock trace to be pruned"
+    return
+  fi
+  state_file="$tmp/.claude/autodev-state/in-progress.jsonl"
+  if [ -s "$state_file" ] && jq -e 'select(.pl == "example.md")' "$state_file" >/dev/null; then
+    fail "scope-lock-complete: expected compact lock snapshot to be pruned"
+    return
+  fi
+  state_file="$tmp/.autodev/state/phase-progress.jsonl"
+  if ! jq -e 'select(.ev == "plan" and .pl == "example.md" and .st == "complete" and .e == "tests pass")' "$state_file" >/dev/null; then
+    fail "scope-lock-complete: expected phase-progress completion evidence row"
+    return
+  fi
   compact_output="$(run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
   if [ -n "$compact_output" ]; then
     fail "scope-lock-complete: expected completed plan to produce no pre-compact lock snapshot, got: ${compact_output}"
     return
   fi
   pass "scope-lock-complete: marks complete and prunes lock traces"
+}
+
+test_scope_lock_complete_requires_lock_file() {
+  local tmp output status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans" "$tmp/tests"
+  cp tests/plan-scope-check.sh "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  cat >"$tmp/docs/plans/example.md" <<'PLAN'
+# Example Plan
+
+## Scope Manifest
+
+**PR Count:** 1
+**Tasks:** 1
+**Out of scope:**
+- (none)
+
+**PR Grouping:**
+
+| PR # | Title | Tasks | Branch |
+|------|-------|-------|--------|
+| 1 | Example | Task 1 | feat/example |
+
+**Status:** Locked 2026-05-25T00:00:00Z
+
+### Task 1: Example
+PLAN
+
+  set +e
+  output="$(hooks/scope-lock-complete "$tmp/docs/plans/example.md" --evidence "tests pass" 2>&1)"
+  status=$?
+  set -e
+
+  if [ "$status" -eq 0 ] || ! printf '%s' "$output" | grep -q 'lock file missing'; then
+    fail "scope-lock-complete: expected missing lock file failure, got status ${status}: ${output}"
+    return
+  fi
+  pass "scope-lock-complete: requires lock file"
+}
+
+test_scope_lock_complete_rejects_bad_lock_without_project_checker() {
+  local tmp output status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans"
+  cat >"$tmp/docs/plans/example.md" <<'PLAN'
+# Example Plan
+
+## Scope Manifest
+
+**PR Count:** 1
+**Tasks:** 1
+**Out of scope:**
+- (none)
+
+**PR Grouping:**
+
+| PR # | Title | Tasks | Branch |
+|------|-------|-------|--------|
+| 1 | Example | Task 1 | feat/example |
+
+**Status:** Locked 2026-05-25T00:00:00Z
+
+### Task 1: Example
+PLAN
+  printf 'bogus\n' > "$tmp/docs/plans/example.md.scope-lock"
+
+  set +e
+  output="$(cd "$tmp" && "$REPO_ROOT/hooks/scope-lock-complete" docs/plans/example.md --evidence "tests pass" 2>&1)"
+  status=$?
+  set -e
+
+  if [ "$status" -eq 0 ] || ! printf '%s' "$output" | grep -q 'manifest hash mismatch'; then
+    fail "scope-lock-complete: expected bad lock failure without project checker, got status ${status}: ${output}"
+    return
+  fi
+  if ! grep -q '\*\*Status:\*\* Locked' "$tmp/docs/plans/example.md" || [ ! -f "$tmp/docs/plans/example.md.scope-lock" ]; then
+    fail "scope-lock-complete: bad lock failure mutated plan or removed lock"
+    return
+  fi
+  pass "scope-lock-complete: rejects bad lock without project checker"
+}
+
+test_scope_lock_complete_preflights_progress_write() {
+  local tmp output status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans"
+  cat >"$tmp/docs/plans/example.md" <<'PLAN'
+# Example Plan
+
+## Scope Manifest
+
+**PR Count:** 1
+**Tasks:** 1
+**Out of scope:**
+- (none)
+
+**PR Grouping:**
+
+| PR # | Title | Tasks | Branch |
+|------|-------|-------|--------|
+| 1 | Example | Task 1 | feat/example |
+
+**Status:** Locked 2026-05-25T00:00:00Z
+
+### Task 1: Example
+PLAN
+  bash hooks/scope-lock-apply "$tmp/docs/plans/example.md" >/dev/null
+  : > "$tmp/.autodev"
+
+  set +e
+  output="$(cd "$tmp" && "$REPO_ROOT/hooks/scope-lock-complete" docs/plans/example.md --evidence "tests pass" 2>&1)"
+  status=$?
+  set -e
+
+  if [ "$status" -eq 0 ]; then
+    fail "scope-lock-complete: expected progress write preflight failure"
+    return
+  fi
+  if ! grep -q '\*\*Status:\*\* Locked' "$tmp/docs/plans/example.md" || [ ! -f "$tmp/docs/plans/example.md.scope-lock" ]; then
+    fail "scope-lock-complete: progress write failure mutated plan or removed lock: ${output}"
+    return
+  fi
+  pass "scope-lock-complete: preflights progress write before mutation"
+}
+
+test_scope_lock_complete_rejects_progress_directory() {
+  local tmp output status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans" "$tmp/.autodev/state/phase-progress.jsonl"
+  cat >"$tmp/docs/plans/example.md" <<'PLAN'
+# Example Plan
+
+## Scope Manifest
+
+**PR Count:** 1
+**Tasks:** 1
+**Out of scope:**
+- (none)
+
+**PR Grouping:**
+
+| PR # | Title | Tasks | Branch |
+|------|-------|-------|--------|
+| 1 | Example | Task 1 | feat/example |
+
+**Status:** Locked 2026-05-25T00:00:00Z
+
+### Task 1: Example
+PLAN
+  bash hooks/scope-lock-apply "$tmp/docs/plans/example.md" >/dev/null
+
+  set +e
+  output="$(cd "$tmp" && "$REPO_ROOT/hooks/scope-lock-complete" docs/plans/example.md --evidence "tests pass" 2>&1)"
+  status=$?
+  set -e
+
+  if [ "$status" -eq 0 ] || ! printf '%s' "$output" | grep -q 'expected regular file'; then
+    fail "scope-lock-complete: expected progress directory failure, got status ${status}: ${output}"
+    return
+  fi
+  if ! grep -q '\*\*Status:\*\* Locked' "$tmp/docs/plans/example.md" || [ ! -f "$tmp/docs/plans/example.md.scope-lock" ]; then
+    fail "scope-lock-complete: progress directory failure mutated plan or removed lock"
+    return
+  fi
+  pass "scope-lock-complete: rejects progress directory before mutation"
 }
 
 test_completion_continuation_block() {
@@ -502,15 +731,16 @@ test_pretool_records_session_lock_for_scope_lock_apply() {
   pass "pre-tool-scope-guard: records scope-lock plan for current session"
 }
 
-test_completion_ignores_unrelated_locked_plan_when_session_has_no_lock() {
+test_completion_ignores_ambiguous_workspace_locks_when_session_has_no_lock() {
   local tmp transcript output
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   transcript="$tmp/session.jsonl"
   touch "$transcript"
   mkdir -p "$tmp/docs/plans" "$tmp/tests"
-  cat >"$tmp/docs/plans/unrelated.md" <<'PLAN'
-# Unrelated Plan
+  for name in one two; do
+    cat >"$tmp/docs/plans/${name}.md" <<PLAN
+# ${name} Plan
 
 ## Scope Manifest
 
@@ -523,22 +753,63 @@ test_completion_ignores_unrelated_locked_plan_when_session_has_no_lock() {
 
 | PR # | Title | Tasks | Branch |
 |------|-------|-------|--------|
-| 1 | Unrelated | Task 1 | feat/unrelated |
+| 1 | ${name} | Task 1 | feat/${name} |
 
 **Status:** Locked 2026-05-25T00:00:00Z
 
-### Task 1: Unrelated
+### Task 1: ${name}
 PLAN
+  done
   cp tests/plan-scope-check.sh "$tmp/tests/plan-scope-check.sh"
   chmod +x "$tmp/tests/plan-scope-check.sh"
-  bash hooks/scope-lock-apply "$tmp/docs/plans/unrelated.md" >/dev/null
+  bash hooks/scope-lock-apply "$tmp/docs/plans/one.md" >/dev/null
+  bash hooks/scope-lock-apply "$tmp/docs/plans/two.md" >/dev/null
 
   output="$(run_hook completion-claim-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false,"last_assistant_message":"Task complete."}')"
   if [ -n "$output" ]; then
-    fail "completion-claim-guard: expected unrelated workspace lock to be ignored for session, got: ${output}"
+    fail "completion-claim-guard: expected ambiguous workspace locks to be ignored for session, got: ${output}"
     return
   fi
-  pass "completion-claim-guard: ignores unrelated locked plans when session has no lock"
+  pass "completion-claim-guard: ignores ambiguous workspace locks when session has no lock"
+}
+
+test_completion_falls_back_to_single_workspace_lock() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/tests"
+  cat >"$tmp/docs/plans/active.md" <<'PLAN'
+# Active Plan
+
+## Scope Manifest
+
+**PR Count:** 1
+**Tasks:** 1
+**Out of scope:**
+- (none)
+
+**PR Grouping:**
+
+| PR # | Title | Tasks | Branch |
+|------|-------|-------|--------|
+| 1 | Active | Task 1 | feat/active |
+
+**Status:** Locked 2026-05-25T00:00:00Z
+
+### Task 1: Active
+PLAN
+  cp tests/plan-scope-check.sh "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  bash hooks/scope-lock-apply "$tmp/docs/plans/active.md" >/dev/null
+
+  output="$(run_hook completion-claim-guard '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false,"last_assistant_message":"Task complete."}')"
+  if ! printf '%s' "$output" | grep -q 'Completion checkpoint'; then
+    fail "completion-claim-guard: expected single workspace lock fallback to block completion, got: ${output}"
+    return
+  fi
+  pass "completion-claim-guard: falls back to single workspace lock"
 }
 
 test_completion_uses_session_locked_plan_only() {
@@ -758,7 +1029,8 @@ test_session_start_json
 test_wrapper_suppresses_unavailable_c_utf8_locale_noise
 test_prompt_strict_json
 test_prompt_strict_no_output_without_trigger
-test_prompt_strict_ignores_unrelated_locked_plan_when_session_has_no_lock
+test_prompt_strict_ignores_ambiguous_workspace_locks_when_session_has_no_lock
+test_prompt_strict_falls_back_to_single_workspace_lock
 test_prompt_strict_uses_session_locked_plan_only
 test_pretool_pr_review_json
 test_posttool_pr_created_json
@@ -766,10 +1038,15 @@ test_pre_compact_snapshot_json
 test_wrapper_suppresses_pre_compact_locale_noise
 test_pre_compact_snapshot_only_locked_plans
 test_scope_lock_complete_marks_complete_and_prunes_state
+test_scope_lock_complete_requires_lock_file
+test_scope_lock_complete_rejects_bad_lock_without_project_checker
+test_scope_lock_complete_preflights_progress_write
+test_scope_lock_complete_rejects_progress_directory
 test_completion_continuation_block
 test_completion_continuation_block_keeps_heading_separator_when_flattened
 test_pretool_records_session_lock_for_scope_lock_apply
-test_completion_ignores_unrelated_locked_plan_when_session_has_no_lock
+test_completion_ignores_ambiguous_workspace_locks_when_session_has_no_lock
+test_completion_falls_back_to_single_workspace_lock
 test_completion_uses_session_locked_plan_only
 test_completion_allows_hard_blocker
 test_pretool_allows_locked_plan_text_edit

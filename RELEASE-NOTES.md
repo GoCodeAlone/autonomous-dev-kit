@@ -12,6 +12,8 @@
   attaching to new autonomous work.
 - Changed PreCompact snapshots to include only active locked plans, reducing
   oversized hook JSON in repositories with many old plan documents.
+- Clarified that adversarial design/plan review should dispatch a subagent with
+  the full adversarial prompt whenever the host exposes subagent support.
 - Added hook-contract regressions for completion cleanup, session-scoped prompt
   reminders, and locked-only PreCompact snapshots.
 

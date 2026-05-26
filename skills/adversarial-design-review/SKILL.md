@@ -222,9 +222,10 @@ On PASS:
 
 ## Dispatching the reviewer agent
 
-Dispatch a `balanced`-tier subagent. Same tier as `alignment-check` and
-`requesting-code-review` reviewers — this is review-class work, not
-orchestration.
+Dispatch a `balanced`-tier subagent whenever the host exposes subagent support.
+Same tier as `alignment-check` and `requesting-code-review` reviewers — this is
+review-class work, not orchestration. Inline adversarial review is a fallback
+only for hosts or sessions where subagents are genuinely unavailable.
 
 <host: claude-code>
 Use the Agent tool to dispatch:
@@ -269,12 +270,14 @@ Agent tool (general-purpose, model: balanced):
 ````
 </host>
 
-<host: codex, opencode, cursor>
-Run the adversarial review inline: read the design (and plan, if
-`--phase=plan`) plus `docs/design-guidance.md` or equivalent project guidance,
-perform every bug-class scan in the checklist, and produce the Report format
-above. The framing requirements still apply — adversarial mindset, ≥3 findings
-or full transcript, no reflexive approval.
+<host: generic-subagent-capable>
+When subagent tools are available in the current host/session, dispatch a
+subagent with the full adversarial prompt above. Inline adversarial review is
+permitted only when subagent tools are genuinely unavailable: read the design
+(and plan, if `--phase=plan`) plus `docs/design-guidance.md` or equivalent
+project guidance, perform every bug-class scan in the checklist, and produce
+the Report format above. The framing requirements still apply — adversarial
+mindset, ≥3 findings or full transcript, no reflexive approval.
 </host>
 
 ## Integration

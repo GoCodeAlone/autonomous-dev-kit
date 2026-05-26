@@ -10,6 +10,10 @@
 set -euo pipefail
 
 [ "${SUPERPOWERS_HOOKS_DISABLE:-}" = "1" ] && exit 0
+command -v jq >/dev/null 2>&1 || {
+    printf 'scope-lock-complete: jq is required for state cleanup\n' >&2
+    exit 2
+}
 
 plan="${1:-}"
 [ -n "$plan" ] || {
@@ -24,6 +28,10 @@ while [ "$#" -gt 0 ]; do
         --evidence)
             shift
             evidence="${1:-}"
+            if [ -z "$evidence" ] || [ "${evidence#--}" != "$evidence" ]; then
+                printf 'scope-lock-complete: --evidence requires a value\n' >&2
+                exit 2
+            fi
             ;;
         *)
             printf 'scope-lock-complete: unknown argument: %s\n' "$1" >&2
@@ -33,10 +41,24 @@ while [ "$#" -gt 0 ]; do
     shift || true
 done
 
-case "$plan" in
-    /*) plan_abs="$plan" ;;
-    *) plan_abs="${PWD}/${plan}" ;;
-esac
+canonical_path_from_base() {
+    local base="$1"
+    local ref="$2"
+    local candidate
+    case "$ref" in
+        /*) candidate="$ref" ;;
+        */*) candidate="${base}/${ref}" ;;
+        *) candidate="${base}/docs/plans/${ref}" ;;
+    esac
+    local dir
+    dir=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P) || return 1
+    printf '%s/%s\n' "$dir" "$(basename "$candidate")"
+}
+
+plan_abs=$(canonical_path_from_base "$PWD" "$plan") || {
+    printf 'scope-lock-complete: unable to resolve plan path: %s\n' "$plan" >&2
+    exit 2
+}
 
 [ -f "$plan_abs" ] || {
     printf 'scope-lock-complete: plan not found: %s\n' "$plan_abs" >&2
@@ -53,14 +75,95 @@ repo_root=$(cd "${plan_dir}/../.." && pwd)
 plan_name=$(basename "$plan_abs")
 plan_rel="docs/plans/${plan_name}"
 lock_file="${plan_abs}.scope-lock"
-checker="${repo_root}/tests/plan-scope-check.sh"
 
-if [ -x "$checker" ] && [ -f "$lock_file" ]; then
-    bash "$checker" --verify-lock "$plan_abs" >/dev/null
+if [ ! -f "$lock_file" ]; then
+    printf 'scope-lock-complete: lock file missing: %s\n' "$lock_file" >&2
+    exit 2
 fi
 
+extract_manifest() {
+    awk '
+        /^## Scope Manifest[[:space:]]*$/ { in_section = 1; print; next }
+        in_section && /^## / { in_section = 0 }
+        in_section && /^### Task [0-9]+[A-Za-z]*([: ]|$)/ { in_section = 0 }
+        in_section { print }
+    ' "$1"
+}
+
+sha256_stdin() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 | awk '{print $1}'
+    else
+        printf 'scope-lock-complete: sha256sum or shasum is required\n' >&2
+        return 3
+    fi
+}
+
+verify_lock_hash() {
+    local expected actual
+    expected=$(awk 'NF && !/^#/ {print; exit}' "$lock_file")
+    if [ -z "$expected" ]; then
+        printf 'scope-lock-complete: lock file has no hash: %s\n' "$lock_file" >&2
+        return 1
+    fi
+    if ! extract_manifest "$plan_abs" | grep -q .; then
+        printf 'scope-lock-complete: no Scope Manifest section found in %s\n' "$plan_rel" >&2
+        return 1
+    fi
+    actual=$(extract_manifest "$plan_abs" | sha256_stdin)
+    if [ "$expected" != "$actual" ]; then
+        printf 'scope-lock-complete: manifest hash mismatch for %s (lock=%s, current=%s)\n' \
+            "$plan_rel" "${expected:0:12}..." "${actual:0:12}..." >&2
+        return 1
+    fi
+}
+
+verify_lock_hash
+
+validate_jsonl() {
+    local file="$1"
+    [ -f "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ -n "$line" ] || continue
+        if ! printf '%s' "$line" | jq -e . >/dev/null; then
+            printf 'scope-lock-complete: invalid JSONL row in %s\n' "$file" >&2
+            return 1
+        fi
+    done < "$file"
+}
+
+session_locks_file="${repo_root}/.claude/autodev-state/session-locks.jsonl"
+in_progress_file="${repo_root}/.claude/autodev-state/in-progress.jsonl"
+progress_dir="${repo_root}/.autodev/state"
+progress_file="${progress_dir}/phase-progress.jsonl"
+
+ensure_regular_or_absent() {
+    local file="$1"
+    if [ -e "$file" ] && [ ! -f "$file" ]; then
+        printf 'scope-lock-complete: expected regular file or absent path: %s\n' "$file" >&2
+        return 1
+    fi
+}
+
+ensure_regular_or_absent "$session_locks_file"
+ensure_regular_or_absent "$in_progress_file"
+ensure_regular_or_absent "$progress_file"
+validate_jsonl "$session_locks_file"
+validate_jsonl "$in_progress_file"
+
 ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-tmp_file=$(mktemp)
+plan_tmp=$(mktemp "${plan_abs}.complete.XXXXXX")
+session_locks_tmp=""
+in_progress_tmp=""
+progress_tmp=""
+
+cleanup_tmp() {
+    rm -f "$plan_tmp" "$session_locks_tmp" "$in_progress_tmp" "$progress_tmp"
+}
+trap cleanup_tmp EXIT
+
 awk -v ts="$ts" '
     !done && /^\*\*Status:\*\* Locked/ {
         print "**Status:** Complete " ts
@@ -68,40 +171,47 @@ awk -v ts="$ts" '
         next
     }
     { print }
-' "$plan_abs" > "$tmp_file"
-mv "$tmp_file" "$plan_abs"
-rm -f "$lock_file"
+' "$plan_abs" > "$plan_tmp"
 
 prune_jsonl() {
     local file="$1"
     [ -f "$file" ] || return 0
-    command -v jq >/dev/null 2>&1 || return 0
     local tmp
-    tmp=$(mktemp)
-    jq -c \
-        --arg name "$plan_name" \
-        --arg rel "$plan_rel" \
-        --arg abs "$plan_abs" \
-        'select((.pl? // "") != $name and (.pl? // "") != $rel and (.pl? // "") != $abs)' \
-        "$file" > "$tmp" 2>/dev/null || {
+    tmp=$(mktemp "${file}.complete.XXXXXX")
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ -n "$line" ] || continue
+        pl=$(printf '%s' "$line" | jq -r '.pl // empty') || {
+            printf 'scope-lock-complete: invalid JSONL row in %s\n' "$file" >&2
             rm -f "$tmp"
-            return 0
+            return 1
         }
-    mv "$tmp" "$file"
+        if [ -n "$pl" ]; then
+            resolved=$(canonical_path_from_base "$repo_root" "$pl" 2>/dev/null || true)
+            [ "$resolved" = "$plan_abs" ] && continue
+        fi
+        printf '%s\n' "$line" >> "$tmp"
+    done < "$file"
+    printf '%s\n' "$tmp"
 }
 
-prune_jsonl "${repo_root}/.claude/autodev-state/session-locks.jsonl"
-prune_jsonl "${repo_root}/.claude/autodev-state/in-progress.jsonl"
+session_locks_tmp=$(prune_jsonl "$session_locks_file")
+in_progress_tmp=$(prune_jsonl "$in_progress_file")
 
-progress_dir="${repo_root}/.autodev/state"
-mkdir -p "$progress_dir" 2>/dev/null || true
-if command -v jq >/dev/null 2>&1; then
-    jq -nc \
-        --arg ts "$ts" \
-        --arg pl "$plan_name" \
-        --arg e "$evidence" \
-        '{ts:$ts,ev:"plan",pl:$pl,st:"complete"} + (if $e != "" then {e:$e} else {} end)' \
-        >> "${progress_dir}/phase-progress.jsonl" 2>/dev/null || true
-fi
+mkdir -p "$progress_dir"
+progress_tmp=$(mktemp "${progress_file}.complete.XXXXXX")
+[ -f "$progress_file" ] && cat "$progress_file" > "$progress_tmp"
+jq -nc \
+    --arg ts "$ts" \
+    --arg pl "$plan_name" \
+    --arg e "$evidence" \
+    '{ts:$ts,ev:"plan",pl:$pl,st:"complete"} + (if $e != "" then {e:$e} else {} end)' \
+    >> "$progress_tmp"
+
+[ -n "$session_locks_tmp" ] && mv "$session_locks_tmp" "$session_locks_file"
+[ -n "$in_progress_tmp" ] && mv "$in_progress_tmp" "$in_progress_file"
+mv "$progress_tmp" "$progress_file"
+mv "$plan_tmp" "$plan_abs"
+rm -f "$lock_file"
+trap - EXIT
 
 printf 'Completed %s and removed %s\n' "$plan_rel" "$(basename "$lock_file")"

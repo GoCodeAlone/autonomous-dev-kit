@@ -49,7 +49,7 @@ The manifest is a section the plan author writes during `writing-plans`. After `
 | 2 | <PR title> | Task 3, Task 4 | feat/<slug>-2 |
 | ... | ... | ... | ... |
 
-**Status:** Draft | Locked YYYY-MM-DDTHH:MM:SSZ | Amended YYYY-MM-DDTHH:MM:SSZ (see decisions/NNNN)
+**Status:** Draft | Locked YYYY-MM-DDTHH:MM:SSZ | Amended YYYY-MM-DDTHH:MM:SSZ (see decisions/NNNN) | Complete YYYY-MM-DDTHH:MM:SSZ
 ```
 
 Every plan task ID listed under `Tasks` in the table must exist in the plan body. Every task in the plan body must appear in exactly one PR row.
@@ -64,8 +64,9 @@ backports and task notes outside the manifest do not change the lock hash.
 
 ```
                       alignment-check PASS
-   Draft  ─────────────────────────────────► Locked
-     ▲                                          │
+   Draft  ─────────────────────────────────► Locked ─────► Complete
+     ▲                                          │          verified design done;
+     │                                          │          scope-lock-complete
      │                                          │  user approves manifest amendment;
      │   alignment-check FAIL → revise          │  recording-decisions writes ADR;
      │                                          ▼
@@ -78,6 +79,9 @@ backports and task notes outside the manifest do not change the lock hash.
 - **Draft**: the plan author is still revising. No execution is permitted.
 - **Locked**: alignment passed. The manifest hash is recorded. Execution is permitted; renegotiation is not.
 - **Amended**: the user explicitly approved a manifest change, or a bug/assumption backport required one; an ADR was written; design/plan/manifest were updated; alignment was re-run on the amended plan, which produced a new Locked stamp. The original Locked stamp is preserved in the ADR's Context for audit.
+- **Complete**: the locked design is fully verified; `scope-lock-complete`
+  verified the lock file, removed it, pruned reminder traces, and recorded
+  completion evidence.
 
 There is no "Expanded" state by design. Adding scope mid-flight requires going back to Draft (re-do brainstorming for the new scope). This is intentional friction.
 
@@ -168,7 +172,7 @@ When the whole locked design is genuinely complete and verified, close the lock
 instead of leaving stale reminders in the workspace:
 
 ```bash
-hooks/scope-lock-complete docs/plans/<plan>.md --evidence "<verification summary>"
+bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-complete" docs/plans/<plan>.md --evidence "<verification summary>"
 ```
 
 The helper verifies the current manifest hash when the checker is available,
