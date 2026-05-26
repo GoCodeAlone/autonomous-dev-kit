@@ -212,6 +212,10 @@ Not a runtime-affecting change. Revert the merge commit. Marketplace bump PR rev
 
 Abandoned plans are NOT auto-revivable. If a release regression makes the operator wish a plan had not been abandoned, the plan must be edited back to `**Status:** Locked YYYY-MM-DDTHH:MM:SSZ` by hand and re-hashed via `scope-lock-apply` (which will create a new `.scope-lock` file). The original lock hash is unrecoverable. This is intentional — abandon is a state termination, not a pause.
 
+## Backport: 5th nag hook discovered at execution time (2026-05-26)
+
+Implementation revealed that `hooks/completion-claim-guard` is a fifth nag hook with the same substring-grep bug AND the same single-workspace-lock fallback. It was missed by the design and the adversarial review. Treated as a design backport (not a manifest amendment): §Approach 0 should read "all five nag hooks" not "all four". Tasks 1 (anchored grep) and 5 (drop fallback) extend to `completion-claim-guard`. No change to PR Count, Task count, or PR Grouping table. Scope manifest hash unchanged. The fifth hook is enumerated in the executing plan's task descriptions.
+
 ## Adversarial review backport (2026-05-26)
 
 Inline adversarial review (subagent stops were swallowed by the very bug the design fixes — live demonstration of the substring grep false positive) produced one Critical and five Important findings. All resolved in §Approach 0 (anchored grep), §Approach 2 (claim hash check + re-apply rationale + liveness check + centralized recognized-command list), §Approach 3 (reason sanitization, no auto-ADR), §Multi-component validation (added end-to-end nag-fires / nag-silenced tests + anchored-grep regression test), and §Rollback (un-abandon limitation). Open questions resolved inline: claim verifies hash at claim time; abandon does NOT write an ADR.
