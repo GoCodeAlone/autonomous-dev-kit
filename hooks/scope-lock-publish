@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# hooks/scope-lock-publish
+# Publishes a Locked plan + its .scope-lock sidecar to the default branch
+# via a chore PR so the lock survives even when the design+plan feature
+# branch never merges to main/master.
+#
+# Usage:
+#   hooks/scope-lock-publish docs/plans/example.md [--base main]
+#
+# Preconditions:
+#   - plan exists at given path AND is committed on the current branch
+#     (along with its .scope-lock sidecar)
+#   - plan Status: line shows "Locked YYYY-MM-DD..."
+#   - working tree clean (no staged/unstaged changes)
+#   - gh CLI authenticated
+set -euo pipefail
+[ "${SUPERPOWERS_HOOKS_DISABLE:-}" = "1" ] && exit 0
+
+plan=""
+base="main"
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --base) base="$2"; shift 2;;
+        --base=*) base="${1#--base=}"; shift;;
+        -h|--help) printf 'Usage: %s <plan-path> [--base <branch>]\n' "$0"; exit 0;;
+        *) if [ -z "$plan" ]; then plan="$1"; shift; else printf 'unexpected arg: %s\n' "$1" >&2; exit 2; fi;;
+    esac
+done
+
+[ -n "$plan" ] || { printf 'scope-lock-publish: missing plan path\n' >&2; exit 2; }
+[ -f "$plan" ] || { printf 'scope-lock-publish: plan not found: %s\n' "$plan" >&2; exit 2; }
+[ -f "${plan}.scope-lock" ] || { printf 'scope-lock-publish: lock file not found: %s.scope-lock — run scope-lock-apply first\n' "$plan" >&2; exit 2; }
+grep -q '^\*\*Status:\*\* Locked ' "$plan" || { printf 'scope-lock-publish: plan Status: is not Locked — refuse\n' >&2; exit 2; }
+
+# Committed-file guard (files must be tracked; clean-tree guard ensures
+# they're also committed — staged-only files would fail the cached diff check).
+git ls-files --error-unmatch "$plan" "${plan}.scope-lock" >/dev/null 2>&1 || {
+    printf 'scope-lock-publish: plan+lock must be committed on current branch before publishing\n' >&2
+    exit 2
+}
+
+git diff --quiet && git diff --cached --quiet || {
+    printf 'scope-lock-publish: working tree has uncommitted changes; stash or commit first\n' >&2
+    exit 2
+}
+
+orig_branch=$(git symbolic-ref --short HEAD 2>/dev/null) || {
+    printf 'scope-lock-publish: HEAD is detached; check out a branch first\n' >&2
+    exit 2
+}
+
+slug=$(basename "$plan" .md)
+branch="chore/scope-lock-init-${slug}"
+
+if git rev-parse --verify -q "refs/heads/$branch" >/dev/null 2>&1; then
+    printf 'scope-lock-publish: branch %s already exists locally; aborting\n' "$branch" >&2
+    exit 2
+fi
+if git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1; then
+    printf 'scope-lock-publish: branch %s already exists on origin; aborting\n' "$branch" >&2
+    exit 2
+fi
+
+src_ref=$(git rev-parse HEAD)
+
+git fetch origin "$base" --quiet
+git checkout -b "$branch" "origin/$base" --quiet
+
+git checkout "$src_ref" -- "$plan" "${plan}.scope-lock"
+git add "$plan" "${plan}.scope-lock"
+git commit -m "chore: publish scope-lock for $slug" --quiet
+
+git push -u origin "$branch" --quiet
+pr_url=$(gh pr create --title "chore: publish scope-lock for $slug" \
+    --body "Auto-published by scope-lock-publish so the locked plan + sidecar land on $base before execution dispatches." \
+    --base "$base")
+pr_num=$(printf '%s' "$pr_url" | grep -oE '[0-9]+$')
+
+gh pr checks "$pr_num" --watch --fail-fast >/dev/null 2>&1 || true
+
+# Switch back BEFORE delete-branch fires (cycle-4 fix: gh pr merge --delete-branch
+# deletes local copy too; Git blocks deleting currently-checked-out branch).
+git checkout "$orig_branch" --quiet
+gh pr merge "$pr_num" --squash --admin --delete-branch
+git branch -D "$branch" 2>/dev/null || true
+
+printf 'scope-lock-publish: PR %s merged; plan + sidecar now on %s\n' "$pr_url" "$base"

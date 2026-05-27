@@ -25,6 +25,7 @@ Manual invocation:
 - **At execution checkpoints** (between tasks): verify reality still matches the lock.
 - **At completion time** (before PR creation): assert manifest is fully satisfied.
 - **At amendment time** (user-approved scope change, or bug/assumption backport that changes the manifest): record the amendment as an ADR, update the design/plan/manifest, re-stamp.
+- **At cascade launch time** (before scope-lock-apply when the plan's PR Grouping table touches multiple plugin repos that will be re-tagged): run `tests/cascade-preflight.sh` to verify each repo's most-recent Release workflow on main was SUCCESS.
 
 ## The Scope Manifest
 
@@ -271,6 +272,7 @@ status line back to `Locked YYYY-MM-DDTHH:MM:SSZ` by hand and re-run
 - `scope-lock-claim <plan>` — attribute an existing lock to the current session (resume after restart).
 - `scope-lock-complete <plan> --evidence "<verification>"` — close the lock as Complete.
 - `scope-lock-abandon <plan> --reason "<reason>"` — close the lock as Abandoned (no completion verification).
+- `scope-lock-publish <plan> [--base <branch>]` — publish a Locked plan + its `.scope-lock` sidecar to the default branch via a chore PR. Use when the design+plan branch will not merge to main (e.g., separate per-PR feature branches consume the plan markdown but not the lock file).
 
 The set of helper names that update `session-locks.jsonl` is centralized in
 `hooks/pre-tool-scope-guard`'s `SESSION_LOCK_RECOGNIZED` variable; helpers and

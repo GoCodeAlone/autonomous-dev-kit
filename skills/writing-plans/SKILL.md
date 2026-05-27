@@ -97,6 +97,7 @@ When writing a plan task, the verification step must match the change class. A g
 | Hook / trigger / event handler | fire the event; observe handler runs | logged side effect confirmed; assertion passes |
 | Multi-component boundary | run an integration/E2E path with real adjacent components where feasible | request/event crosses boundary; downstream side effect observed |
 | Infrastructure change | render/validate/plan/dry-run plus targeted apply in safe env when available | expected resource diff; no destructive prod action without approval |
+| Go-repo code change | `golangci-lint run --new-from-rev=origin/<base>` before push | exit 0 |
 
 These examples are illustrative minimums; per-task `Expected:` fields must be literal values the check can assert against.
 

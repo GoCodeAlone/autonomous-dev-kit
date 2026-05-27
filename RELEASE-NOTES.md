@@ -1,5 +1,26 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.1.1 — 2026-05-27
+
+Cascade retro plugin-level follow-ups bundle.
+
+- **adversarial-design-review**: added "plugin-loader runtime layout" + "config-validation schema rules" plan-phase bug classes
+- **writing-plans / verification-before-completion**: added `golangci-lint run` pre-push verification for Go-repo PRs
+- **scope-lock**: new `hooks/scope-lock-publish` sibling helper publishes a Locked plan + `.scope-lock` sidecar via a chore PR on the default branch (sidesteps the case where design+plan branch never merges)
+- **scope-lock**: new `tests/cascade-preflight.sh` verifies each plugin repo's last Release workflow was green before cascade launch (catches ManifestProvider-class gaps cheap)
+- **subagent-driven-development**: spec-reviewer for IaC-test-scenario PRs must now execute ≥1 scenario end-to-end before approving (`bash -n` insufficient)
+- **RELEASE-NOTES**: backfilled missing v6.1.0 entry
+
+All 5 follow-ups originate from `workflow-plugin-infra/docs/retros/2026-05-27-dns-provider-cascade-retro.md`.
+
+## v6.1.0 — 2026-05-26
+
+Session-scoped lock nag + claim/abandon helpers (PR #42 + #43).
+
+- Anchor-match `Status: Locked` substring (eliminates substring-bug demoed live during PR review)
+- Workspace-fallback removed when session has no attribution
+- New helpers: `scope-lock-claim` (resume after restart), `scope-lock-abandon` (close never-completed lock)
+
 ## v6.0.5 (2026-05-26)
 
 ### Scope-lock completion cleanup

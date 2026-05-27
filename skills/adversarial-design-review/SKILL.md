@@ -109,6 +109,8 @@ inherits the design's blast radius) and adds:
 | **Missing rollback wiring** | The design specifies a rollback story (per the design-phase class above). Is it actually implemented in the plan as a task or step? Or is it a paragraph nobody is going to write code for? |
 | **Missing integration proof** | For multi-component changes, does the plan include an end-to-end or integration verification that exercises the real boundary? If it only tests each component with mocks, flag it unless the design explicitly justified that as sufficient. |
 | **Infrastructure verification mismatch** | For infrastructure-affecting changes, does the plan verify render/plan/apply/dry-run, secret wiring, migration order, rollback, and post-deploy health as appropriate? If not, flag it. |
+| **Plugin-loader runtime layout** | Plans that spawn or load an external plugin process must build the binary in a layout the host's discovery code accepts. For wfctl: `$WFCTL_PLUGIN_DIR/<plugin-name>/<plugin-name>` + sibling `plugin.json`. Plans that `go build -o /tmp/single-binary` without the subdir + manifest sidecar will fail at runtime. |
+| **Config-validation schema rules** | Plans that create new config files validated by a schema or CLI tool must satisfy that tool's invariants (e.g., for wfctl: `checkEntryPoints` requires ≥1 entry-point module like `http.server`/`scheduler.modular`/`messaging.broker`, OR a trigger/route/subscription/job/pipeline). Plans omitting required entry-point modules pass `bash -n` but fail schema validation at CI. |
 
 ## Process
 

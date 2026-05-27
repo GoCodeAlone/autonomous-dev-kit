@@ -36,6 +36,7 @@ Skip step = unverified claim.
 | regression test works | red → green proof | green only |
 | agent completed | inspect diff + verify | agent report |
 | requirements met | checklist vs plan/design | tests alone |
+| lint clean (Go-repo PR) | `golangci-lint run` exit 0 | tests green alone |
 
 ## Red Flags
 
