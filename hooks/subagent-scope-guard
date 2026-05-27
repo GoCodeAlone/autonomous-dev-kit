@@ -34,9 +34,11 @@ stop_hook_active=$(printf '%s' "$hook_input" | jq -r '.stop_hook_active // false
 
 block() {
     local reason="$1"
-    printf '{"decision":"block","reason":%s}\n' \
-        "$(printf '%s' "$reason" | jq -Rs .)"
-    exit 2
+    if command -v jq >/dev/null 2>&1; then
+        jq -nc --arg reason "$reason" '{decision:"block",reason:$reason}'
+    fi
+    printf '%s\n' "$reason" >&2
+    exit 0
 }
 
 # ── Detect uncommitted or recently committed protected-file changes ───────────
