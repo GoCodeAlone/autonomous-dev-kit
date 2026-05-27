@@ -1,5 +1,13 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.1.3 — 2026-05-27
+
+PreToolUse / SubagentStop block contract fix for Codex compatibility.
+
+- `hooks/pre-tool-scope-guard` and `hooks/subagent-scope-guard`: the `block()` helper was emitting `{"decision":"block","reason":"..."}` on stdout and then `exit 2`. Both Claude Code and Codex ignore stdout JSON when a hook exits with code 2 — they require the reason on stderr. Codex enforces this strictly and surfaced the error: `PreToolUse hook exited with code 2 but did not write a blocking reason to stderr`. Claude Code silently dropped the reason. Fixed by switching to `exit 0` with stdout JSON (the documented decision-control path on both hosts) and mirroring the reason to stderr for any host that captures stderr regardless of exit code. Same pattern already used by `hooks/completion-claim-guard`.
+- Switched `jq -n` → `jq -nc` in both hooks so the emitted JSON is compact (matches the format hosts and grep-based tests expect; trims a few bytes).
+- Added two regression tests in `tests/hook-contracts.sh` that assert blocks exit 0, emit stdout JSON, AND mirror the reason to stderr.
+
 ## v6.1.2 — 2026-05-27
 
 SessionStart hook payload bloat fix.

@@ -40,12 +40,22 @@ transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 
 session_key=""
 [ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
 
-# Output a block decision and exit 2 (the exit code Claude Code uses for blocks).
+# Output a block decision via JSON on stdout, then exit 0.
+# Both Claude Code and Codex parse `{"decision":"block","reason":"..."}` on
+# stdout when the hook exits 0. We deliberately do NOT use `exit 2`: both
+# hosts ignore stdout entirely on exit 2 and require the reason on stderr,
+# so emitting JSON + exit 2 would surface "exited with code 2 but did not
+# write a blocking reason to stderr" on Codex and silently drop the reason
+# on Claude Code. Mirror the pattern used in hooks/completion-claim-guard.
+# Also mirror the reason to stderr so hosts/logs that capture stderr still
+# see the human-readable text.
 block() {
     local reason="$1"
-    printf '{"decision":"block","reason":%s}\n' \
-        "$(printf '%s' "$reason" | jq -Rs .)"
-    exit 2
+    if command -v jq >/dev/null 2>&1; then
+        jq -nc --arg reason "$reason" '{decision:"block",reason:$reason}'
+    fi
+    printf '%s\n' "$reason" >&2
+    exit 0
 }
 
 # Recognized helper script names that update session-lock state. Pattern-matched

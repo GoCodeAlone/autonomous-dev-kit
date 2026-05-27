@@ -92,6 +92,79 @@ test_session_start_json() {
   assert_hook_context_json "session-start" "SessionStart" "$output"
 }
 
+test_pre_tool_scope_guard_block_exits_zero_with_stderr_reason() {
+  # When pre-tool-scope-guard blocks a Bash command, it must:
+  #   (1) exit 0  -- both Claude Code and Codex ignore stdout JSON on exit 2
+  #   (2) emit {"decision":"block","reason":"..."} on stdout (Claude Code path)
+  #   (3) mirror the reason on stderr (Codex path / any host that reads stderr)
+  # Regression for Codex error: "PreToolUse hook exited with code 2 but did
+  # not write a blocking reason to stderr."
+  local tmp stdout_file stderr_file status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  stdout_file="$tmp/out"
+  stderr_file="$tmp/err"
+  # force-push trigger: always blocked, no setup required
+  set +e
+  printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push --force origin main"},"cwd":"'"$tmp"'"}' \
+    | hooks/pre-tool-scope-guard >"$stdout_file" 2>"$stderr_file"
+  status=$?
+  set -e
+  if [ "$status" != "0" ]; then
+    fail "pre-tool-scope-guard: block must exit 0, got ${status}. stderr: $(cat "$stderr_file")"
+    return
+  fi
+  if ! grep -q '"decision":"block"' "$stdout_file"; then
+    fail "pre-tool-scope-guard: block must emit JSON on stdout, got: $(cat "$stdout_file")"
+    return
+  fi
+  if ! grep -qi 'force push' "$stderr_file"; then
+    fail "pre-tool-scope-guard: block must mirror reason to stderr, got: $(cat "$stderr_file")"
+    return
+  fi
+  pass "pre-tool-scope-guard: block emits exit 0 + stdout JSON + stderr text (Codex compat)"
+}
+
+test_subagent_scope_guard_block_exits_zero_with_stderr_reason() {
+  # Same contract for the SubagentStop hook.
+  local tmp transcript stdout_file stderr_file status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  touch "$transcript"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state" "$tmp/tests"
+  cp "$REPO_ROOT/tests/plan-scope-check.sh" "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  emit_locked_fixture "$tmp/docs/plans/active.md" "active"
+  jq -nc --arg s "session.jsonl" --arg pl "docs/plans/active.md" \
+    '{ev:"session-lock",session:$s,pl:$pl}' \
+    > "$tmp/.claude/autodev-state/session-locks.jsonl"
+  # Force drift so verify-lock fails and block() fires.
+  awk '/^\*\*Tasks:\*\* 1/ {print; print "**Drift:** yes"; next} {print}' \
+    "$tmp/docs/plans/active.md" > "$tmp/docs/plans/active.md.tmp" \
+    && mv "$tmp/docs/plans/active.md.tmp" "$tmp/docs/plans/active.md"
+  stdout_file="$tmp/out"
+  stderr_file="$tmp/err"
+  set +e
+  printf '%s' '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","stop_hook_active":false}' \
+    | hooks/subagent-scope-guard >"$stdout_file" 2>"$stderr_file"
+  status=$?
+  set -e
+  if [ "$status" != "0" ]; then
+    fail "subagent-scope-guard: block must exit 0, got ${status}. stderr: $(cat "$stderr_file")"
+    return
+  fi
+  if ! grep -q '"decision":"block"' "$stdout_file"; then
+    fail "subagent-scope-guard: block must emit JSON on stdout, got: $(cat "$stdout_file")"
+    return
+  fi
+  if ! grep -qi 'manifest' "$stderr_file"; then
+    fail "subagent-scope-guard: block must mirror reason to stderr, got: $(cat "$stderr_file")"
+    return
+  fi
+  pass "subagent-scope-guard: block emits exit 0 + stdout JSON + stderr text (Codex compat)"
+}
+
 test_wrapper_suppresses_unavailable_c_utf8_locale_noise() {
   local tmp stdout_file stderr_file stderr_text stdout_text
   tmp="$(mktemp -d)"
@@ -1404,6 +1477,8 @@ test_pretool_allows_locked_plan_text_edit
 test_subagent_allows_non_manifest_plan_backport
 test_subagent_scope_guard_ignores_unattributed_workspace_lock
 test_subagent_scope_guard_blocks_attributed_drift
+test_pre_tool_scope_guard_block_exits_zero_with_stderr_reason
+test_subagent_scope_guard_block_exits_zero_with_stderr_reason
 test_scope_lock_claim_writes_session_attribution
 test_scope_lock_claim_writes_are_idempotent
 test_scope_lock_claim_rejects_unlocked_plan
