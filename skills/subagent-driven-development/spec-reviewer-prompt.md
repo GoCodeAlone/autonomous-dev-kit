@@ -48,6 +48,12 @@ Task tool (general-purpose):
 
        If any acceptance bullet has no corresponding change: **MISSING**.
 
+    ### Pre-approval gate (for IaC-test-scenario PRs)
+
+    For PRs whose changes include `scenarios/`, `tests/integration/`, or files matching `*/test/run.sh`: run AT LEAST ONE scenario end-to-end before approving. `bash -n` (syntax check) is insufficient — past cascade reviews have caught Critical bugs (state-backend mismatch, plugin-loader layout) only when the reviewer actually executed the script.
+
+    Heuristic scope: file path contains `scenarios/`, `tests/integration/`, OR matches `*/test/run.sh`.
+
     3. **For TDD tasks, run the test yourself**. Do not trust "I ran it":
        - "RED" task (failing test): `go test ./...` (or equivalent) MUST FAIL
          when you run it. If it passes, the test isn't asserting what the
