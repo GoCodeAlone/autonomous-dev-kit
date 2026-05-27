@@ -1,5 +1,13 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.1.0 — 2026-05-26
+
+Session-scoped lock nag + claim/abandon helpers (PR #42 + #43).
+
+- Anchor-match `Status: Locked` substring (eliminates substring-bug demoed live during PR review)
+- Workspace-fallback removed when session has no attribution
+- New helpers: `scope-lock-claim` (resume after restart), `scope-lock-abandon` (close never-completed lock)
+
 ## v6.0.5 (2026-05-26)
 
 ### Scope-lock completion cleanup
