@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 # SessionStart hook for autodev plugin
 #
-# On every session start (startup|resume|clear|compact) this loads the
-# using-autodev skill so the skills system is available before the first
-# turn. On compact|resume it ALSO injects a "resumption context" block that:
+# Emits a short pointer reminding the agent that autodev skills exist and
+# how to invoke them via the host's Skill tool. The full using-autodev
+# SKILL.md body is NOT re-embedded -- both Claude Code and Codex discover
+# skills natively via SKILL.md frontmatter, and SessionStart fires for
+# every compact (Claude Code) and every subagent spawn (Codex), so embedding
+# the body would bloat context by ~8KB per fire.
+#
+# On compact|resume it ALSO injects a "resumption context" block that:
 #   - replays recent autodev activity from .claude/autodev-state/in-progress.jsonl
 #     (so a lead orchestrator knows which skills + subagents were in flight), and
 #   - extracts the first user message from the session transcript
 #     (so a subagent that just compacted can re-read its original task).
+#
+# Subagent contexts (payload contains agent_type) exit early with no output:
+# subagents don't need autodev skill bootstrap and don't have meaningful
+# resumption context.
 
 set -euo pipefail
 
@@ -23,23 +32,72 @@ fi
 
 source_kind=""
 transcript_path=""
+agent_id=""
+session_id=""
 cwd_dir="${PWD}"
 if command -v jq >/dev/null 2>&1; then
     source_kind=$(printf '%s' "$hook_input"     | jq -r '.source // empty'           2>/dev/null || true)
     transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+    agent_id=$(printf '%s' "$hook_input"        | jq -r '.agent_id // empty'         2>/dev/null || true)
+    session_id=$(printf '%s' "$hook_input"      | jq -r '.session_id // empty'       2>/dev/null || true)
     cwd_from_hook=$(printf '%s' "$hook_input"   | jq -r '.cwd // empty'              2>/dev/null || true)
     [ -n "$cwd_from_hook" ] && cwd_dir="$cwd_from_hook"
 fi
 
+# Skip injection for subagent contexts entirely. Codex's
+# run_pending_session_start_hooks fires per subagent spawn; without this
+# guard every subagent dispatch re-emits the payload. Discriminator is
+# agent_id, not agent_type: Claude Code populates agent_type on top-level
+# `claude --agent <name>` main sessions (which DO deserve the pointer),
+# but agent_id is "present only when the hook fires inside a subagent
+# call" on both hosts.
+if [ -n "$agent_id" ]; then
+    exit 0
+fi
+
 STATE_DIR="${cwd_dir}/.claude/autodev-state"
 STATE_FILE="${STATE_DIR}/in-progress.jsonl"
+SEEN_FILE="${STATE_DIR}/session-start-seen"
+SESSION_ID_FILE="${STATE_DIR}/current-session-id"
 
-# Wipe stale state at the start of a brand-new (or cleared) session.
-# If the session source can't be determined (e.g. jq is unavailable) treat
-# it as a fresh session and fail closed, so stale activity from a prior
-# session can't leak into the resumption context.
-if [ -z "$source_kind" ] || [ "$source_kind" = "startup" ] || [ "$source_kind" = "clear" ]; then
-    rm -f "$STATE_FILE"
+# Detect session transitions via session_id rather than source=startup.
+# Codex has been observed re-firing SessionStart 6+ times on a single
+# prompt; using source=startup as the "fresh session" signal causes those
+# re-fires to repeatedly wipe state. Compare current session_id against
+# the previously-recorded one; only wipe stale state on a genuine new
+# session. Also wipe on `clear` (same session_id but explicit reset).
+fresh_session=0
+if [ -n "$session_id" ]; then
+    prev_session_id=""
+    [ -f "$SESSION_ID_FILE" ] && prev_session_id=$(cat "$SESSION_ID_FILE" 2>/dev/null || true)
+    if [ "$prev_session_id" != "$session_id" ] || [ "$source_kind" = "clear" ]; then
+        fresh_session=1
+    fi
+elif [ -z "$source_kind" ] || [ "$source_kind" = "startup" ] || [ "$source_kind" = "clear" ]; then
+    # No session_id available (jq missing or host doesn't populate). Fall
+    # back to source-based detection; without a session_id we can't dedup
+    # anyway, so treating these as fresh is safe.
+    fresh_session=1
+fi
+
+if [ "$fresh_session" = "1" ]; then
+    rm -f "$STATE_FILE" "$SEEN_FILE"
+    if [ -n "$session_id" ]; then
+        mkdir -p "$STATE_DIR" 2>/dev/null || true
+        printf '%s' "$session_id" > "$SESSION_ID_FILE" 2>/dev/null || true
+    fi
+fi
+
+# Per-session dedup for startup-class fires. Same session_id+source_kind
+# emits once. Compact/resume are intentionally NOT deduped: each represents
+# a real lifecycle event whose resumption context the agent needs.
+if [ -n "$session_id" ] && { [ -z "$source_kind" ] || [ "$source_kind" = "startup" ] || [ "$source_kind" = "clear" ]; }; then
+    dedup_key="${session_id}:${source_kind:-startup}"
+    if [ -f "$SEEN_FILE" ] && grep -Fxq "$dedup_key" "$SEEN_FILE" 2>/dev/null; then
+        exit 0
+    fi
+    mkdir -p "$STATE_DIR" 2>/dev/null || true
+    printf '%s\n' "$dedup_key" >> "$SEEN_FILE" 2>/dev/null || true
 fi
 
 # Build the resumption context (only on compact|resume).
@@ -108,18 +166,15 @@ if [ -d "$legacy_skills_dir" ]; then
     warning_message=$'\n\n<important-reminder>IN YOUR FIRST REPLY AFTER SEEING THIS MESSAGE YOU MUST TELL THE USER:⚠️ **WARNING:** Autonomous Dev Kit now uses Claude Code\'s skills system. Custom skills in ~/.config/autodev/skills will not be read. Move custom skills to ~/.claude/skills instead. To make this message go away, remove ~/.config/autodev/skills</important-reminder>'
 fi
 
-using_autodev_content=$(cat "${PLUGIN_ROOT}/skills/using-autodev/SKILL.md" 2>&1 || echo "Error reading using-autodev skill")
-
+# Short pointer payload. Host's native skill discovery already surfaces
+# autodev skills; re-embedding the full SKILL.md body on every SessionStart
+# fire (which Codex emits per subagent spawn, and Claude Code emits per
+# compact) bloats context by ~8KB each time. Reference the skill name and
+# let the agent invoke it on demand via the Skill tool.
 session_context=$(cat <<CONTEXT
-<EXTREMELY_IMPORTANT>
-You have autodev.
-
-**Below is the full content of your 'autodev:using-autodev' skill - your introduction to using skills. For all other skills, use the 'Skill' tool:**
-
-${using_autodev_content}
-
-${warning_message}${resumption_section}
-</EXTREMELY_IMPORTANT>
+<autodev>
+Plugin active. Skill discipline: invoke \`autodev:using-autodev\` via the Skill tool before responding when any autodev skill might apply. Pipeline skills auto-chain; pre-pipeline skills (brainstorming, debugging, project-design-guidance) gate creative or bugfix work. List all autodev skills via your host's skill listing.${warning_message}${resumption_section}
+</autodev>
 CONTEXT
 )
 
