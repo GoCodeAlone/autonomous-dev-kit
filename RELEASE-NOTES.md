@@ -1,5 +1,14 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.1.2 — 2026-05-27
+
+SessionStart hook payload bloat fix.
+
+- `hooks/session-start`: stop re-embedding the full ~8 KB `using-autodev` SKILL.md body on every fire. Emit a ~340-byte pointer that names the skill and tells the agent to invoke it on demand via the host's Skill tool. Both Claude Code and Codex discover skills natively, so the body inject was redundant.
+- `hooks/session-start`: skip injection entirely when `agent_id` is present in the payload. Codex's `run_pending_session_start_hooks` was observed firing per subagent spawn (6+ identical blobs on a single user prompt); guarding on `agent_id` (the cross-host "fires inside a subagent" signal) eliminates that. `agent_type` alone is NOT used as the discriminator because Claude Code populates it on top-level `claude --agent <name>` main sessions.
+- `hooks/session-start`: per-`session_id:source_kind` dedup for `startup`/`clear` fires guards against host re-fire bugs (Codex 6+ rapid fires, plugin reload loops, MCP init re-triggers). `compact` and `resume` fires are intentionally NOT deduped so each legitimate lifecycle event still emits its resumption context.
+- `hooks/session-start`: stale-state wipe now keyed on `session_id` transitions rather than `source == "startup"`. The old signal caused re-fires of the same session's startup event to repeatedly wipe the SEEN_FILE, defeating dedup.
+
 ## v6.1.1 — 2026-05-27
 
 Cascade retro plugin-level follow-ups bundle.
