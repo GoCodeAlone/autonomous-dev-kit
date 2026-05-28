@@ -1,5 +1,12 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.1.4 — 2026-05-28
+
+PreToolUse guard quote-strip extended to all destructive-command checks.
+
+- `hooks/pre-tool-scope-guard`: the force-push, history-rewrite, locked-plan-push, and default-branch-push checks now operate on the quote-stripped form of the Bash `tool_input.command` (`cmd_no_quotes`, already computed for the SUPERPOWERS_ self-bypass check). Previously these four checks scanned the raw command, which produced false-positive blocks when a destructive command appeared as a documentation example inside a quoted heredoc body — e.g. `gh pr create --body "$(cat <<EOF ... git push --force origin main ... EOF)"` was matched as a real force push, blocking the PR creation. Encountered during v6.1.3 release: PR #47's body quoted `git push --force` and the hook blocked the very PR meant to ship the v6.1.3 fix.
+- `tests/hook-contracts.sh`: added a regression test that asserts no block fires when force-push appears inside a quoted-string body.
+
 ## v6.1.3 — 2026-05-27
 
 PreToolUse / SubagentStop block contract fix for Codex compatibility.

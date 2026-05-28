@@ -92,6 +92,33 @@ test_session_start_json() {
   assert_hook_context_json "session-start" "SessionStart" "$output"
 }
 
+test_pre_tool_scope_guard_does_not_block_force_push_inside_quoted_string() {
+  # Destructive-command regexes must use the quote-stripped form of the
+  # tool_input.command so that a documentation example inside a quoted
+  # heredoc body doesn't trigger a false-positive force-push block.
+  # Regression for the session-time block of PR #47 creation: the PR body
+  # quoted `git push --force origin main` verbatim and the hook matched it.
+  local tmp stdout_file stderr_file status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  stdout_file="$tmp/out"
+  stderr_file="$tmp/err"
+  payload='{"tool_name":"Bash","tool_input":{"command":"gh pr create --title hi --body \"Example to avoid: git push --force origin main\""},"cwd":"'"$tmp"'"}'
+  set +e
+  printf '%s' "$payload" | hooks/pre-tool-scope-guard >"$stdout_file" 2>"$stderr_file"
+  status=$?
+  set -e
+  if [ "$status" != "0" ]; then
+    fail "pre-tool-scope-guard: must not block force-push mention inside quoted string, exit ${status} stdout: $(cat "$stdout_file") stderr: $(cat "$stderr_file")"
+    return
+  fi
+  if grep -q '"decision":"block"' "$stdout_file"; then
+    fail "pre-tool-scope-guard: blocked force-push mention inside quoted string (false positive). stdout: $(cat "$stdout_file")"
+    return
+  fi
+  pass "pre-tool-scope-guard: does not block force-push mentions inside quoted strings"
+}
+
 test_pre_tool_scope_guard_block_exits_zero_with_stderr_reason() {
   # When pre-tool-scope-guard blocks a Bash command, it must:
   #   (1) exit 0  -- both Claude Code and Codex ignore stdout JSON on exit 2
@@ -1477,6 +1504,7 @@ test_pretool_allows_locked_plan_text_edit
 test_subagent_allows_non_manifest_plan_backport
 test_subagent_scope_guard_ignores_unattributed_workspace_lock
 test_subagent_scope_guard_blocks_attributed_drift
+test_pre_tool_scope_guard_does_not_block_force_push_inside_quoted_string
 test_pre_tool_scope_guard_block_exits_zero_with_stderr_reason
 test_subagent_scope_guard_block_exits_zero_with_stderr_reason
 test_scope_lock_claim_writes_session_attribution

@@ -168,24 +168,34 @@ case "$tool_name" in
 
     record_session_lock "$cmd"
 
+    # All destructive-command checks below operate on cmd_no_quotes (computed
+    # above) rather than the raw $cmd. The quoted/heredoc-stripped form
+    # avoids false-positive blocks when a destructive command appears as a
+    # documentation example inside a quoted string -- e.g. the body of
+    # `gh pr create --body "$(cat <<EOF ... git push --force origin main ... EOF)"`
+    # would otherwise be matched as a real force push. The trade-off is that
+    # an attacker who hides a destructive command inside quoted args (e.g.
+    # `eval "git push --force"`) would slip through; that's an acceptable
+    # edge case versus the much more common false-positive on PR bodies.
+
     # ── 1. Force push (always blocked) ──────────────────────────────────────
     # Catches: --force, --force-with-lease, -f flag
     # These overwrite remote refs and lose commits for anyone who already pulled.
-    if printf '%s' "$cmd" | grep -q 'git push' && \
-       printf '%s' "$cmd" | grep -qE '(--force-with-lease|--force| -f( |$)| -f$)'; then
+    if printf '%s' "$cmd_no_quotes" | grep -q 'git push' && \
+       printf '%s' "$cmd_no_quotes" | grep -qE '(--force-with-lease|--force| -f( |$)| -f$)'; then
         block "Force push blocked — rewrites remote history and permanently discards commits that others may have pulled. During autonomous pipeline execution this is never acceptable. If the remote branch genuinely needs correction, stop and get explicit user approval. Unlock path: ask the user, then proceed manually with SUPERPOWERS_HOOKS_DISABLE=1 scoped to that one command."
     fi
 
     # ── 2. Local history rewrites (always blocked) ──────────────────────────
     # git rebase -i: interactive rebase rewrites commit SHAs.
     # git reset --hard: destructively discards work-tree and commit history.
-    if printf '%s' "$cmd" | grep -qE 'git (rebase[[:space:]]+-i|rebase[[:space:]].*-i|reset[[:space:]]+--hard)'; then
+    if printf '%s' "$cmd_no_quotes" | grep -qE 'git (rebase[[:space:]]+-i|rebase[[:space:]].*-i|reset[[:space:]]+--hard)'; then
         block "Destructive history rewrite blocked (git rebase -i or git reset --hard). These commands alter commit history and can discard work irreversibly. Stop and ask the user whether this is genuinely intended before proceeding."
     fi
 
     # ── 3. push / PR creation while locked plan hash mismatches ─────────────
     # Catches post-lock plan tampering before anything reaches the remote.
-    if printf '%s' "$cmd" | grep -qE '(git push|gh pr create|gh pr merge)'; then
+    if printf '%s' "$cmd_no_quotes" | grep -qE '(git push|gh pr create|gh pr merge)'; then
         while IFS= read -r locked_plan; do
             [ -n "$locked_plan" ] || continue
             if ! verify_lock "$locked_plan"; then
@@ -195,14 +205,14 @@ case "$tool_name" in
     fi
 
     # ── 4. Push/commit to default branch (blocked unless opt-out) ───────────
-    if printf '%s' "$cmd" | grep -qE 'git (push|commit)' && \
+    if printf '%s' "$cmd_no_quotes" | grep -qE 'git (push|commit)' && \
        [ "${SUPERPOWERS_ALLOW_DEFAULT_BRANCH:-}" != "1" ]; then
         # Explicit main/master push target
-        if printf '%s' "$cmd" | grep -qE 'git push.+(origin[[:space:]]+(main|master)|HEAD:(main|master)|(main|master):[[:space:]]*(main|master))'; then
+        if printf '%s' "$cmd_no_quotes" | grep -qE 'git push.+(origin[[:space:]]+(main|master)|HEAD:(main|master)|(main|master):[[:space:]]*(main|master))'; then
             block "Pushing directly to main or master is blocked during autonomous pipeline execution. Work on a feature branch and open a PR for review. If this is genuinely intentional, set SUPERPOWERS_ALLOW_DEFAULT_BRANCH=1 in your environment and retry the command manually."
         fi
         # Bare 'git push' or 'git push origin' when current branch is main/master
-        if printf '%s' "$cmd" | grep -qE 'git push[[:space:]]*(origin[[:space:]]*)?$'; then
+        if printf '%s' "$cmd_no_quotes" | grep -qE 'git push[[:space:]]*(origin[[:space:]]*)?$'; then
             current_branch=$(cd "$cwd_dir" && git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
             if [ "$current_branch" = "main" ] || [ "$current_branch" = "master" ]; then
                 block "Current branch is '${current_branch}' (the default branch). Pushing directly to main or master is blocked during autonomous pipeline execution. Switch to a feature branch first. To override, set SUPERPOWERS_ALLOW_DEFAULT_BRANCH=1."
