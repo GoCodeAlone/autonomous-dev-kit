@@ -59,6 +59,32 @@ STATE_DIR="${cwd_dir}/.claude/autodev-state"
 STATE_FILE="${STATE_DIR}/in-progress.jsonl"
 SEEN_FILE="${STATE_DIR}/session-start-seen"
 SESSION_ID_FILE="${STATE_DIR}/current-session-id"
+LAST_EMIT_FILE="${STATE_DIR}/session-start-last-emit"
+
+# Time-based dedup (defense in depth, applies to ALL source kinds).
+#
+# The per-session_id:source_kind dedup below handles startup-class re-fires
+# where Codex / the host populates session_id consistently. But Codex has
+# also been observed firing SessionStart 9+ times in rapid succession near
+# session limits (and on resume/wrap-up lifecycle events), with payload
+# fields we don't always see -- session_id may rotate, source may be a
+# value we don't anticipate, agent_id may be absent on subagent-style
+# fires. Time dedup catches all of those regardless of payload shape:
+# if a SessionStart payload was emitted in the last N seconds, skip.
+#
+# Window is intentionally short (5s) so legitimate user-driven compacts
+# spaced minutes apart still emit their resumption context. The 9-in-
+# rapid-succession bug happens within ~1 second.
+DEDUP_WINDOW_SEC=5
+if [ -f "$LAST_EMIT_FILE" ]; then
+    now=$(date +%s 2>/dev/null || echo 0)
+    last=$(stat -f %m "$LAST_EMIT_FILE" 2>/dev/null \
+        || stat -c %Y "$LAST_EMIT_FILE" 2>/dev/null \
+        || echo 0)
+    if [ "$now" -gt 0 ] && [ "$last" -gt 0 ] && [ $((now - last)) -lt "$DEDUP_WINDOW_SEC" ]; then
+        exit 0
+    fi
+fi
 
 # Detect session transitions via session_id rather than source=startup.
 # Codex has been observed re-firing SessionStart 6+ times on a single
@@ -206,5 +232,10 @@ PY
 }
 
 emit_additional_context "SessionStart" "$session_context"
+
+# Touch the dedup timestamp file AFTER emit. Subsequent invocations within
+# DEDUP_WINDOW_SEC will short-circuit via the time-dedup check at top.
+mkdir -p "$STATE_DIR" 2>/dev/null || true
+: > "$LAST_EMIT_FILE" 2>/dev/null || true
 
 exit 0
