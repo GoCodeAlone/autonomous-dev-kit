@@ -86,9 +86,53 @@ assert_hook_context_json() {
   pass "${name}: emits valid ${event} additionalContext JSON"
 }
 
+test_session_start_time_dedup_suppresses_rapid_refires() {
+  # Regression for v6.1.5: Codex was observed firing SessionStart 9+ times
+  # in rapid succession near session limits. Session-id-based dedup misses
+  # this when session_id rotates or source is a value we don't anticipate.
+  # Time-based dedup (default 5s window) must catch ALL rapid re-fires
+  # regardless of payload shape -- different session_id, different source.
+  local tmp out1 out2 out3 out4
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  # Fire 1: fresh state, emits.
+  out1="$(run_hook session-start '{"source":"startup","cwd":"'"$tmp"'","session_id":"sA"}')"
+  if [ -z "$out1" ]; then
+    fail "session-start: first fire must emit, got empty"
+    return
+  fi
+  # Fire 2: same session+source within window -> suppressed by session-id dedup OR time dedup.
+  out2="$(run_hook session-start '{"source":"startup","cwd":"'"$tmp"'","session_id":"sA"}')"
+  if [ -n "$out2" ]; then
+    fail "session-start: same-session re-fire within window must be suppressed, got: ${out2}"
+    return
+  fi
+  # Fire 3: rotated session_id, same window -> session-id dedup wouldn't catch this;
+  # time dedup must.
+  out3="$(run_hook session-start '{"source":"startup","cwd":"'"$tmp"'","session_id":"sB"}')"
+  if [ -n "$out3" ]; then
+    fail "session-start: rotated-session_id re-fire within window must be suppressed (time dedup), got: ${out3}"
+    return
+  fi
+  # Fire 4: different source (compact, normally NOT deduped), same window.
+  # Time dedup must still suppress to prevent the 9-in-rapid-succession bug.
+  out4="$(run_hook session-start '{"source":"compact","cwd":"'"$tmp"'","session_id":"sC"}')"
+  if [ -n "$out4" ]; then
+    fail "session-start: compact re-fire within window must be suppressed (time dedup), got: ${out4}"
+    return
+  fi
+  pass "session-start: time-based dedup suppresses rapid re-fires across session_id/source rotations"
+}
+
 test_session_start_json() {
-  local output
-  output="$(run_hook session-start '{"source":"startup","cwd":"'"$REPO_ROOT"'"}')"
+  # Use isolated tmpdir cwd so the hook's per-cwd state dir
+  # (.claude/autodev-state) doesn't leak across tests -- the time-based
+  # dedup added in v6.1.5 would otherwise suppress emissions in tests
+  # that share the same cwd within the 5-second window.
+  local tmp output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  output="$(run_hook session-start '{"source":"startup","cwd":"'"$tmp"'"}')"
   assert_hook_context_json "session-start" "SessionStart" "$output"
 }
 
@@ -193,13 +237,17 @@ test_subagent_scope_guard_block_exits_zero_with_stderr_reason() {
 }
 
 test_wrapper_suppresses_unavailable_c_utf8_locale_noise() {
-  local tmp stdout_file stderr_file stderr_text stdout_text
+  local tmp stdout_file stderr_file stderr_text stdout_text cwd_dir
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   stdout_file="$tmp/stdout.json"
   stderr_file="$tmp/stderr.txt"
+  # Use isolated cwd so v6.1.5's time-based session-start dedup doesn't
+  # suppress this emission when other tests just ran in REPO_ROOT.
+  cwd_dir="$tmp/cwd"
+  mkdir -p "$cwd_dir"
 
-  run_hook_wrapper session-start '{"source":"startup","cwd":"'"$REPO_ROOT"'"}' "$stdout_file" "$stderr_file"
+  run_hook_wrapper session-start '{"source":"startup","cwd":"'"$cwd_dir"'"}' "$stdout_file" "$stderr_file"
   stdout_text="$(cat "$stdout_file")"
   stderr_text="$(cat "$stderr_file")"
 
@@ -1472,6 +1520,7 @@ JSONL
 
 require_jq
 test_session_start_json
+test_session_start_time_dedup_suppresses_rapid_refires
 test_wrapper_suppresses_unavailable_c_utf8_locale_noise
 test_prompt_strict_json
 test_prompt_strict_no_output_without_trigger

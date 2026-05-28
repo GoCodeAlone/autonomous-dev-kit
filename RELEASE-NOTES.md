@@ -1,5 +1,14 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.1.5 — 2026-05-28
+
+SessionStart time-based dedup as defense in depth.
+
+- `hooks/session-start`: added a 5-second time-window dedup that suppresses ANY rapid re-fire regardless of payload shape. The per-`session_id:source_kind` dedup added in v6.1.2 only covers startup-class fires where the host populates `session_id` consistently. Codex was observed firing SessionStart 9+ times in rapid succession near session limits — possibly during internal resume/wrap-up lifecycle events — with rotating `session_id` and source values our existing dedup didn't anticipate. Time dedup catches that uniformly: if any SessionStart payload was emitted in the last 5 seconds, the new fire short-circuits silently.
+- The 5-second window is intentionally short so legitimate user-driven compacts spaced minutes apart still emit their resumption context. The observed bug was 9 fires inside ~1 second.
+- Added regression test asserting four rapid fires with rotating `session_id` + source produce exactly one emission.
+- Test isolation: `tests/hook-contracts.sh` SessionStart tests now use isolated tmpdir cwds so the per-cwd dedup state doesn't leak across tests.
+
 ## v6.1.4 — 2026-05-28
 
 PreToolUse guard quote-strip extended to all destructive-command checks.
