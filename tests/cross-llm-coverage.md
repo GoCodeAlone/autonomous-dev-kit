@@ -24,6 +24,7 @@ host-neutral. Updated whenever a skill changes.
 | using-git-worktrees | host-neutral | host-neutral | host-neutral | host-neutral | already portable (Group I) |
 | using-autodev | host-neutral | host-neutral | host-neutral | host-neutral | host-access phrasing is prose-based ("In Claude Code: … In other environments: …"); no forbidden tokens |
 | verification-before-completion | host-neutral | host-neutral | host-neutral | host-neutral | already portable (Group I) |
+| demonstration-fidelity | host-neutral | host-neutral | host-neutral | host-neutral | pure markdown; no host-specific tooling. Advisory backstop is the separate `hooks/pretool-demo-fidelity-guard` (Claude+Codex+Cursor via hooks.json) |
 | writing-plans | host-neutral | host-neutral | host-neutral | host-neutral | Plan Mode reference is prose-based ("If you are running in Claude Code…"); no `<host:>` blocks needed |
 | writing-skills | host-conditional | host-conditional | host-conditional | host-conditional | `TodoWrite` checklist and tier-brand names wrapped in `<host: claude-code>` blocks |
 

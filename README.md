@@ -196,6 +196,7 @@ adversarial review challenges it explicitly.
 
 **Testing**
 - **test-driven-development** - RED-GREEN-REFACTOR cycle (includes testing anti-patterns reference)
+- **demonstration-fidelity** - A demo/example/showcase must execute the real artifact — no reimplementation, hard-coded output, or different-language fake
 
 **Debugging**
 - **systematic-debugging** - 4-phase root cause process (includes root-cause-tracing, defense-in-depth, condition-based-waiting techniques)

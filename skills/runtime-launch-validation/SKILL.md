@@ -45,6 +45,7 @@ Triggered NOT by:
 | Library / SDK | Import into a tiny consumer program, exercise the new public surface | Output, behavior matches docs |
 | Plugin / extension | Load it into the host application, exercise a representative call | Host doesn't crash on load; representative call returns |
 | Interface boundary change (new method, field, event type, or hook — see `agents/boundary-classes.md` for the canonical boundary-class list) | Launch both sides/participants as applicable; exercise a real interaction across the boundary — not a mock or stub on either end | The receiving side correctly processes the new data/method/event/hook; no fallback silently swallows the new path; failure-signature scrape clean on all participating sides |
+| Demonstration / example / showcase artifact (anything built to show a change working) | The real artifact, invoked through its real entry point; capture output from that run | Output is produced by the real code path, not literals; the artifact-under-demonstration is NOT stubbed; any substituted *dependency* sits behind a real interface seam and is disclosed. See `autodev:demonstration-fidelity`. |
 
 ## Failure-signature scrape
 
@@ -95,6 +96,7 @@ The constraint is not an excuse to skip; it's a request for help.
 ## See also
 
 - `skills/verification-before-completion/SKILL.md` — general evidence-before-assertion principle
+- `autodev:demonstration-fidelity` — demo/example/showcase artifacts must execute the real artifact (the "Demonstration" change-class row above)
 - `skills/finishing-a-development-branch/SKILL.md` — Step 1b invokes this skill
 - `skills/writing-plans/SKILL.md` — related planning guidance for per-change-class verification
 - `agents/boundary-classes.md` — canonical definition of interface boundary classes (producer→consumer, caller→callee, sender→handler, plugin→host)

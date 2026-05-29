@@ -112,6 +112,8 @@ If NOT triggered (pure logic refactor, doc-only, test-only): skip this step.
 
 **The launch transcript is required in the PR body when this step triggers.** Without it, the PR is not ready for merge — even if all unit tests pass.
 
+**Demonstration artifacts:** if the change ships any demo/example/showcase/quickstart artifact (in this diff or the PR body), `autodev:demonstration-fidelity` applies — confirm the demo executes the real artifact (no reimplementation, hard-coded output, or different-language fake) before merge.
+
 ### Step 1c: Version-Skew Audit (conditional)
 
 **Trigger:** the diff updates a non-dev-only version pin (any "version: vX.Y.Z", "image: foo:vX.Y.Z", or `<package>@vX.Y.Z`) — excludes dev-only tooling pins (linters, formatters) where skew is generally benign.
