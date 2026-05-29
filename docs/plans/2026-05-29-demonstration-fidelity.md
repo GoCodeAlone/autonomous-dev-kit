@@ -67,15 +67,17 @@ remove the `hooks.json` entry (Task 3); or `SUPERPOWERS_HOOKS_DISABLE=1`.
 - Test: `tests/hook-contracts.sh` (add a `demo-fidelity` case block)
 
 **Step 1 (RED): add failing contract cases to `tests/hook-contracts.sh`.** Cases:
-- demo path `examples/foo-demo.py` → stdout JSON has `hookSpecificOutput.additionalContext` matching `demonstration-fidelity`; exit 0; no `decision`/`block`.
+- demo path `examples/foo-demo.py` (+ `transcript_path` set) → stdout JSON has `hookSpecificOutput.additionalContext` matching `demonstration-fidelity`; exit 0; no `decision`/`block`.
 - excluded `pkg/example_test.go` → empty stdout (silent); exit 0.
 - excluded `testdata/example.json` → silent.
-- kept `examples/latest-feature-demo.py` → fires.
+- excluded `examples/testdata/demo.py` → silent (excluded segment `testdata` wins over trigger segment `examples`).
+- kept `examples/latest-feature-demo.py` → fires (rev2-regression guard: basename has substring `test`/`spec`? no — `latest` contains `test` but exclusion is segment/suffix-anchored, not substring).
+- kept `examples/Showcase.go` (capitalized) → fires (path lowercased before matching).
 - non-demo `internal/server.go` → silent.
 - `SUPERPOWERS_HOOKS_DISABLE=1` + demo path → silent.
 - malformed/empty stdin → exit 0, no crash.
-- dedup: same demo path twice in one session → fires once.
-- fail-open: state dir unwritable → still fires.
+- dedup: same demo path twice with the **same** `transcript_path` → fires once (second is suppressed).
+- fail-open: state file path forced unwritable (e.g. point `cwd` at a dir where `.claude/autodev-state` cannot be created) → still **fires** (fail-open = fire, never silent).
 
 **Step 2 (RED run):** `bash tests/hook-contracts.sh 2>&1 | tail -20`
 Expected: FAIL (hook script does not exist yet).
@@ -89,9 +91,11 @@ Expected: FAIL (hook script does not exist yet).
 - **lowercase** path for matching (handles `Examples/`, `Demo*`).
 - Split on `/`. Trigger iff: a segment == `demos`|`examples`, OR basename starts with `demo`|`example`|`showcase`|`quickstart`.
 - Exclude iff: a segment ∈ {`test`,`tests`,`spec`,`specs`,`testdata`,`fixtures`,`vendor`,`node_modules`,`.git`}, OR basename matches `*_test.*`|`*.test.*`|`*.spec.*`. Excluded → exit 0.
-- Dedup: key = `sha(session_id:original_path)`; state file `${cwd}/.claude/autodev-state/demo-fidelity-seen.jsonl`. If key present → exit 0. Else attempt append; **append failure does NOT suppress** (fail-open = fire).
+- **Session key (NOT `session_id`):** `transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty')`; `session_key=$(basename "$transcript_path" 2>/dev/null || echo "")`. PreToolUse payloads carry `transcript_path`, **not** `session_id` — verified at `hooks/pre-tool-scope-guard:39-41`, which uses exactly this idiom. Empty `transcript_path` → `session_key=""` (degrades to per-path dedup for that harness; acceptable for an advisory nudge).
+- Dedup: `key=$(printf '%s' "${session_key}:${file_path}" | sha256sum | cut -d" " -f1)` (or `shasum -a 256` fallback); state file `${cwd}/.claude/autodev-state/demo-fidelity-seen` (one key per line). If `grep -qxF "$key" "$state" 2>/dev/null` → exit 0 (already nudged this session). Else append + emit.
+- **Fail-open guard (critical with `set -euo pipefail`):** wrap every state I/O so a failure CANNOT fail-closed — `mkdir -p "$dir" 2>/dev/null || true`, `grep ... || true`, `printf '%s\n' "$key" >> "$state" 2>/dev/null || true`. A read/write failure must fall through to **emit** (fire), never to a silent exit. (A naive unguarded `>>` under `errexit` would fail-CLOSED — the bug this guard prevents.)
 - Emit static `additionalContext` reminder (no file contents) via `emit_additional_context "PreToolUse" "$reminder"`; exit 0.
-- Any error path → exit 0 silently.
+- Any unexpected error path → exit 0 silently (cannot wedge a session). Note: "fail-open = fire" applies specifically to *state I/O* failures; a malformed-payload parse failure still exits 0 silent.
 
 Reminder string (static):
 ```
@@ -121,15 +125,27 @@ Expected: JSON with `additionalContext` containing `demonstration-fidelity`; cap
 
 **Files:** Modify: `hooks/hooks.json` (PreToolUse array).
 
-**Step 1:** Add a third PreToolUse entry (matcher `Write|Edit|MultiEdit`) calling `run-hook.cmd pretool-demo-fidelity-guard`, `timeout: 10`, mirroring existing entries.
+**Step 1:** Add a **new, separate** element to the `PreToolUse` array (do NOT merge into the existing `Bash|Write|Edit|MultiEdit` scope-guard block — that would alter scope-guard's matcher). Exact element:
+```json
+{
+  "matcher": "Write|Edit|MultiEdit",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" pretool-demo-fidelity-guard",
+      "timeout": 10
+    }
+  ]
+}
+```
 
 **Step 2 (verify):** `jq . hooks/hooks.json >/dev/null && echo VALID`
 Expected: `VALID`.
 
 **Step 3 (verify registration via contracts):** `bash tests/hook-contracts.sh 2>&1 | tail -5`
-Expected: PASS (includes hooks.json well-formedness + new hook wiring if asserted).
+Expected: PASS (includes hooks.json well-formedness + new hook wiring).
 
-**Step 4:** Commit. `git commit -am "feat(hooks): register pretool-demo-fidelity-guard"`
+**Step 4:** Commit. `git add hooks/hooks.json && git commit -m "feat(hooks): register pretool-demo-fidelity-guard"`
 
 ---
 
@@ -204,6 +220,15 @@ Expected: skill loads or fidelity behavior emerges (best-effort; record outcome)
 
 **Step 3:** Record both outcomes in the PR body. No commit (verification only).
 
+**GATE (writing-skills Iron Law GREEN — blocks Task 7):** Step 1 MUST show fidelity
+behavior — the agent runs the real artifact (or substitutes only a disclosed
+dependency seam) and does NOT hard-code output or reimplement. If the agent still
+fakes the demo with the skill present, the skill's GREEN test FAILED: return to
+Task 4, revise the skill to close the rationalization, re-run Step 1. Do NOT
+proceed to Task 7 (version bump / release) on a failing GREEN. A skill whose GREEN
+test fails is an untested skill and must not ship. (Step 2 discoverability is
+best-effort and non-gating; only Step 1 fidelity gates.)
+
 ---
 
 ### Task 7: Version bump + release notes
@@ -212,7 +237,7 @@ Expected: skill loads or fidelity behavior emerges (best-effort; record outcome)
 
 **Files:**
 - Modify: `.claude-plugin/plugin.json` (`"version": "6.1.5"` → `"6.2.0"`).
-- Modify: `.cursor-plugin/plugin.json` (same bump if it carries a version).
+- Modify: `.cursor-plugin/plugin.json` (`6.1.5`→`6.2.0` — it carries a version; `tests/version-check.sh` requires all manifests agree, so this bump is mandatory, not conditional).
 - Modify: `RELEASE-NOTES.md` (prepend v6.2.0 entry: new skill + advisory hook + wiring).
 
 **Step 1:** Apply bumps. (New feature → minor bump 6.1.5→6.2.0.)
@@ -224,6 +249,13 @@ Expected: skill loads or fidelity behavior emerges (best-effort; record outcome)
 ---
 
 ### Task 8: Full suite + scope-lock verify (pre-PR gate)
+
+> **Lock ordering:** the `.scope-lock` sidecar is written by `scope-lock-apply`
+> at lock time — i.e. after `alignment-check` PASS and **before** Task-1
+> execution begins (`alignment-check` invokes `scope-lock`). By the time Task 8
+> runs, `docs/plans/2026-05-29-demonstration-fidelity.md.scope-lock` exists, so
+> `--verify-lock` below is valid. If the lock file is missing here, scope-lock
+> was skipped — stop and run `bash hooks/scope-lock-apply <plan>` before the PR.
 
 **Step 1:** Run the full local suite:
 ```

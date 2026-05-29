@@ -329,6 +329,16 @@ bundling the hook in the same PR is low-risk.
   cohesive feature; recorded as accepted. Resolved. (Plus granular-neutralization
   note in Rollback so a noisy hook need not force a full revert.)
 
+### Backport 2026-05-29 (plan-phase adversarial review)
+
+- **Failed assumption:** dedup keyed on `<session-id>`. **Evidence:** PreToolUse
+  payloads carry no `session_id` (only `session-start` reads it); the established
+  PreToolUse session-key idiom is `basename(transcript_path)` — `hooks/pre-tool-scope-guard:39-41`.
+  **Corrected behavior:** dedup key = `sha256(basename(transcript_path):path)`;
+  empty transcript_path → per-path dedup (advisory-acceptable). State I/O wrapped
+  `|| true` so `set -euo pipefail` fails **open (fire)**, never closed.
+  **Manifest scope:** unchanged (no task/PR/scope delta) — lock hash unaffected.
+
 ### Cycle-2 resolutions (rev 3)
 
 - **Hook exclusion over-excluded (NEW Important):** substring `test`/`spec`
