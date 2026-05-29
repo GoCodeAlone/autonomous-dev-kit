@@ -37,6 +37,7 @@ Skip step = unverified claim.
 | agent completed | inspect diff + verify | agent report |
 | requirements met | checklist vs plan/design | tests alone |
 | lint clean (Go-repo PR) | `golangci-lint run` exit 0 | tests green alone |
+| demo/example works | the real artifact executed via the demo produced the shown output (see `autodev:demonstration-fidelity`) | hand-written/hard-coded output, a reimplementation, a different-language fake |
 
 ## Red Flags
 

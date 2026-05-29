@@ -1518,6 +1518,117 @@ JSONL
   pass "skill-activation-audit: reads compact state rows"
 }
 
+# ── pretool-demo-fidelity-guard (advisory, never blocks) ─────────────────────
+demo_fidelity_payload() {
+  # $1 = file_path, $2 = transcript_path, $3 = cwd
+  printf '{"tool_name":"Write","tool_input":{"file_path":"%s"},"cwd":"%s","transcript_path":"%s"}' \
+    "$1" "$3" "$2"
+}
+
+test_demo_fidelity_fires_and_never_blocks() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"; transcript="${tmp}/sessionA.jsonl"; : > "$transcript"
+  output="$(run_hook pretool-demo-fidelity-guard "$(demo_fidelity_payload "examples/foo-demo.py" "$transcript" "$tmp")")"
+  assert_hook_context_json "demo-fidelity:fires" "PreToolUse" "$output"
+  if printf '%s' "$output" | grep -q 'demonstration-fidelity'; then
+    pass "demo-fidelity: reminder references the skill"
+  else
+    fail "demo-fidelity: reminder must reference demonstration-fidelity: ${output}"
+  fi
+  if printf '%s' "$output" | jq -e 'has("decision")' >/dev/null 2>&1; then
+    fail "demo-fidelity: advisory hook must never emit decision/block: ${output}"
+  else
+    pass "demo-fidelity: never blocks (no decision key)"
+  fi
+  rm -rf "$tmp"
+}
+
+test_demo_fidelity_fires_on_legit_demos() {
+  local tmp transcript output p
+  tmp="$(mktemp -d)"
+  # Capitalized + names containing test/spec as substrings (NOT segments) must still fire.
+  for p in "examples/latest-feature-demo.py" "examples/attestation-demo.go" "examples/Showcase.go" "demo_runner.go" "quickstart.md"; do
+    transcript="${tmp}/$(printf '%s' "$p" | tr '/.' '__').jsonl"; : > "$transcript"
+    output="$(run_hook pretool-demo-fidelity-guard "$(demo_fidelity_payload "$p" "$transcript" "$tmp")")"
+    if printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | length > 0' >/dev/null 2>&1; then
+      pass "demo-fidelity: fires on ${p}"
+    else
+      fail "demo-fidelity: must fire on legit demo ${p}: ${output}"
+    fi
+  done
+  rm -rf "$tmp"
+}
+
+test_demo_fidelity_silent_on_excluded_and_nondemo() {
+  local tmp transcript output p
+  tmp="$(mktemp -d)"; transcript="${tmp}/s.jsonl"; : > "$transcript"
+  for p in "pkg/example_test.go" "testdata/example.json" "examples/testdata/demo.py" "internal/server.go" "config/sample_config.yaml" "vendor/example/demo.go" "app/spec/example_helper.rb" "examples/widget_spec.rb" "demo_service.spec.ts"; do
+    output="$(run_hook pretool-demo-fidelity-guard "$(demo_fidelity_payload "$p" "$transcript" "$tmp")")"
+    if [ -z "$output" ]; then
+      pass "demo-fidelity: silent on ${p}"
+    else
+      fail "demo-fidelity: must be silent on ${p}: ${output}"
+    fi
+  done
+  rm -rf "$tmp"
+}
+
+test_demo_fidelity_silent_on_non_write_tool() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"; transcript="${tmp}/s.jsonl"; : > "$transcript"
+  output="$(printf '{"tool_name":"Bash","tool_input":{"command":"echo hi > examples/foo-demo.py"},"cwd":"%s","transcript_path":"%s"}' "$tmp" "$transcript" | env LC_ALL=C LANG=C LC_CTYPE=C hooks/pretool-demo-fidelity-guard || true)"
+  if [ -z "$output" ]; then pass "demo-fidelity: silent on non-Write tool"; else fail "demo-fidelity: must ignore non-Write tools: ${output}"; fi
+  rm -rf "$tmp"
+}
+
+test_demo_fidelity_respects_disable_env() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"; transcript="${tmp}/s.jsonl"; : > "$transcript"
+  output="$(printf '{"tool_name":"Write","tool_input":{"file_path":"examples/foo-demo.py"},"cwd":"%s","transcript_path":"%s"}' "$tmp" "$transcript" | env SUPERPOWERS_HOOKS_DISABLE=1 LC_ALL=C LANG=C LC_CTYPE=C hooks/pretool-demo-fidelity-guard || true)"
+  if [ -z "$output" ]; then pass "demo-fidelity: respects SUPERPOWERS_HOOKS_DISABLE"; else fail "demo-fidelity: must be silent when disabled: ${output}"; fi
+  rm -rf "$tmp"
+}
+
+test_demo_fidelity_handles_malformed_stdin() {
+  local output
+  output="$(printf '%s' 'not json {{{' | env LC_ALL=C LANG=C LC_CTYPE=C hooks/pretool-demo-fidelity-guard || true)"
+  if [ -z "$output" ]; then pass "demo-fidelity: silent + no crash on malformed stdin"; else fail "demo-fidelity: malformed stdin must not emit: ${output}"; fi
+  output="$(printf '%s' '' | env LC_ALL=C LANG=C LC_CTYPE=C hooks/pretool-demo-fidelity-guard || true)"
+  if [ -z "$output" ]; then pass "demo-fidelity: silent on empty stdin"; else fail "demo-fidelity: empty stdin must not emit: ${output}"; fi
+}
+
+test_demo_fidelity_dedups_within_session() {
+  local tmp transcript out1 out2
+  tmp="$(mktemp -d)"; transcript="${tmp}/sessionDedup.jsonl"; : > "$transcript"
+  out1="$(run_hook pretool-demo-fidelity-guard "$(demo_fidelity_payload "examples/foo-demo.py" "$transcript" "$tmp")")"
+  out2="$(run_hook pretool-demo-fidelity-guard "$(demo_fidelity_payload "examples/foo-demo.py" "$transcript" "$tmp")")"
+  if printf '%s' "$out1" | jq -e '.hookSpecificOutput.additionalContext | length > 0' >/dev/null 2>&1; then
+    pass "demo-fidelity: first write fires"
+  else
+    fail "demo-fidelity: first write must fire: ${out1}"
+  fi
+  if [ -z "$out2" ]; then
+    pass "demo-fidelity: dedups second write of same path in same session"
+  else
+    fail "demo-fidelity: second write of same path must be suppressed: ${out2}"
+  fi
+  rm -rf "$tmp"
+}
+
+test_demo_fidelity_fail_open_when_state_unwritable() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"; transcript="${tmp}/s.jsonl"; : > "$transcript"
+  # Make .claude a regular file so mkdir -p .claude/autodev-state cannot succeed.
+  printf '' > "${tmp}/.claude"
+  output="$(run_hook pretool-demo-fidelity-guard "$(demo_fidelity_payload "examples/foo-demo.py" "$transcript" "$tmp")")"
+  if printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | length > 0' >/dev/null 2>&1; then
+    pass "demo-fidelity: fail-open — fires when dedup state is unwritable"
+  else
+    fail "demo-fidelity: must fire (fail-open) when state unwritable: ${output}"
+  fi
+  rm -rf "$tmp"
+}
+
 require_jq
 test_session_start_json
 test_session_start_time_dedup_suppresses_rapid_refires
@@ -1569,6 +1680,14 @@ test_e2e_abandon_then_no_nag
 test_e2e_fresh_session_no_claim_no_nag
 test_record_activity_compact_state
 test_skill_activation_audit_reads_compact_state
+test_demo_fidelity_fires_and_never_blocks
+test_demo_fidelity_fires_on_legit_demos
+test_demo_fidelity_silent_on_excluded_and_nondemo
+test_demo_fidelity_silent_on_non_write_tool
+test_demo_fidelity_respects_disable_env
+test_demo_fidelity_handles_malformed_stdin
+test_demo_fidelity_dedups_within_session
+test_demo_fidelity_fail_open_when_state_unwritable
 
 if [ "$failures" -ne 0 ]; then
   printf '\n%d hook contract test(s) failed.\n' "$failures" >&2

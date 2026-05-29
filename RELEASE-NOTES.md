@@ -1,5 +1,14 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.2.0 — 2026-05-29
+
+New skill **demonstration-fidelity** + an advisory write-time hook, closing a verification-theater gap: an agent writes real code, then "demonstrates" it with a demo that never executes the real artifact — reimplementing the logic, hard-coding the output, or rewriting it in another language. The demo proves nothing yet is presented as proof.
+
+- **`skills/demonstration-fidelity/SKILL.md`** (host-neutral, load-bearing on every harness): a demonstration MUST execute the real artifact and show output produced by that run. Forbids reimplementation, hard-coded output, stubbing the artifact-under-demonstration, and detached prototypes — regardless of language. Allows substituting a *dependency* at a real interface seam **with disclosure**. Establishes "fidelity, not language sameness" (a real cross-language client crossing a real interface is valid), a 3-question fidelity test, a fake-vs-faithful example, and a rationalization table seeded from RED-baseline transcripts.
+- **`hooks/pretool-demo-fidelity-guard`** (advisory, NEVER blocks; Claude + Codex + Cursor via `hooks.json`): on a Write/Edit to a demo-like path, injects a fidelity reminder pointing at the skill. Heuristic is anchored to path *segments* (`demos`/`examples`) + basename prefixes (`demo*`/`example*`/`showcase*`/`quickstart*`) with segment/suffix exclusions (`test`/`spec`/`testdata`/`fixtures`/`vendor` segments, `*_test.*`/`*.spec.*` basenames) — so `example_test.go`/`testdata/` are skipped while `examples/latest-feature-demo.py` still fires. Session dedup keyed on `basename(transcript_path)`; fails **open** (fires) on state I/O failure; honors `SUPERPOWERS_HOOKS_DISABLE=1`.
+- **Pipeline wiring:** new `runtime-launch-validation` "Demonstration / example / showcase" change-class row (carving out artifact-stub-forbidden vs. disclosed-dependency-seam-allowed so it does not contradict RLV's "no stub on either end"); a `verification-before-completion` `demo/example works` claim-matrix row; a `finishing-a-development-branch` Step 1b demo note; `using-autodev` cross-cutting listing; README + `tests/cross-llm-coverage.md` rows.
+- **Tests:** 22 `tests/hook-contracts.sh` assertions for the new guard (fires/silent/excluded/dedup/fail-open/disable-env/malformed-stdin/never-blocks). Skill is host-neutral (`skill-content-grep.sh`) and cross-refs resolve (`skill-cross-refs.sh`).
+
 ## v6.1.5 — 2026-05-28
 
 SessionStart time-based dedup as defense in depth.

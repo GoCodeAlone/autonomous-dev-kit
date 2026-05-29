@@ -83,7 +83,7 @@ When multiple skills could apply, use this order:
 3. **Pipeline skills auto-chain** — these invoke each other automatically in the autonomous pipeline:
    brainstorming → adversarial-design-review (design phase) → writing-plans → adversarial-design-review (plan phase) → alignment-check → **scope-lock** → subagent-driven-development → finishing-a-development-branch → pr-monitoring → post-merge-retrospective
 
-   Cross-cutting skills invoked from within the pipeline when conditions trigger: `project-design-guidance` (before designs/plans and during retros when durable guidance changes); `recording-decisions` (when designs/plans make non-trivial trade-offs, including user-approved manifest amendments); `scope-lock` (re-checked at every per-task checkpoint and before PR creation); `condensed-pipeline-writing` (for dense internal design/review/plan artifacts).
+   Cross-cutting skills invoked from within the pipeline when conditions trigger: `project-design-guidance` (before designs/plans and during retros when durable guidance changes); `recording-decisions` (when designs/plans make non-trivial trade-offs, including user-approved manifest amendments); `scope-lock` (re-checked at every per-task checkpoint and before PR creation); `condensed-pipeline-writing` (for dense internal design/review/plan artifacts); `demonstration-fidelity` (before writing any demo/example/showcase/proof artifact — it must execute the real code, not fake it).
 
 "Let's build X" → brainstorming first, then the pipeline runs autonomously after design approval.
 "Fix this bug" → debugging first, then domain-specific skills.
