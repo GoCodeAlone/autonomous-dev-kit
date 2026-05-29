@@ -30,7 +30,7 @@
 |------|-------|-------|--------|
 | 1 | feat: demonstration-fidelity skill + advisory hook + wiring (v6.2.0) | Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7, Task 8 | feat/demonstration-fidelity-2026-05-29T1128 |
 
-**Status:** Draft
+**Status:** Locked 2026-05-29T11:52:19Z
 
 ---
 
