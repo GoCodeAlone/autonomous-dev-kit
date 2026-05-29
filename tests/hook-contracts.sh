@@ -1562,7 +1562,7 @@ test_demo_fidelity_fires_on_legit_demos() {
 test_demo_fidelity_silent_on_excluded_and_nondemo() {
   local tmp transcript output p
   tmp="$(mktemp -d)"; transcript="${tmp}/s.jsonl"; : > "$transcript"
-  for p in "pkg/example_test.go" "testdata/example.json" "examples/testdata/demo.py" "internal/server.go" "config/sample_config.yaml" "vendor/example/demo.go" "app/spec/example_helper.rb"; do
+  for p in "pkg/example_test.go" "testdata/example.json" "examples/testdata/demo.py" "internal/server.go" "config/sample_config.yaml" "vendor/example/demo.go" "app/spec/example_helper.rb" "examples/widget_spec.rb" "demo_service.spec.ts"; do
     output="$(run_hook pretool-demo-fidelity-guard "$(demo_fidelity_payload "$p" "$transcript" "$tmp")")"
     if [ -z "$output" ]; then
       pass "demo-fidelity: silent on ${p}"

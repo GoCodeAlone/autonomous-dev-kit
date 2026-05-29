@@ -47,6 +47,8 @@ Triggered NOT by:
 | Interface boundary change (new method, field, event type, or hook — see `agents/boundary-classes.md` for the canonical boundary-class list) | Launch both sides/participants as applicable; exercise a real interaction across the boundary — not a mock or stub on either end | The receiving side correctly processes the new data/method/event/hook; no fallback silently swallows the new path; failure-signature scrape clean on all participating sides |
 | Demonstration / example / showcase artifact (anything built to show a change working) | The real artifact, invoked through its real entry point; capture output from that run | Output is produced by the real code path, not literals; the artifact-under-demonstration is NOT stubbed; any substituted *dependency* sits behind a real interface seam and is disclosed. See `autodev:demonstration-fidelity`. |
 
+When a demonstration *also* exercises a new boundary, both this row and the "Interface boundary change" row apply: stub neither the artifact nor the boundary under test — only a disclosed *dependency* behind the artifact may be substituted.
+
 ## Failure-signature scrape
 
 While watching the artifact run, scan output for these patterns. Any hit is a fail.

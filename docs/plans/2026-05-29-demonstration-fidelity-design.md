@@ -339,6 +339,13 @@ bundling the hook in the same PR is low-risk.
   `|| true` so `set -euo pipefail` fails **open (fire)**, never closed.
   **Manifest scope:** unchanged (no task/PR/scope delta) — lock hash unaffected.
 
+### Backport 2026-05-29 (code-review I-1)
+
+- **Gap:** exclusion suffix globs `*_test.*|*.test.*|*.spec.*` missed RSpec
+  `*_spec.rb` → `examples/widget_spec.rb` fired spuriously. **Fix:** added
+  `*_spec.*`. Also hardened seg loops with `"${segs[@]:-}"` (bash 3.2 `set -u`)
+  and added a one-clause RLV overlap note. **Manifest scope:** unchanged.
+
 ### Cycle-2 resolutions (rev 3)
 
 - **Hook exclusion over-excluded (NEW Important):** substring `test`/`spec`

@@ -47,18 +47,20 @@ base=${lc_path##*/}
 IFS='/' read -r -a segs <<< "$lc_path" || true
 
 # ── Exclusion (segment-exact + basename suffix globs; never bare substrings) ─
-for seg in "${segs[@]}"; do
+# "${segs[@]:-}" form so an (unreachable) empty array can't trip `set -u` under
+# bash 3.2 (macOS system bash, which run-hook.cmd may exec).
+for seg in "${segs[@]:-}"; do
   case "$seg" in
     test|tests|spec|specs|testdata|fixtures|vendor|node_modules|.git) exit 0 ;;
   esac
 done
 case "$base" in
-  *_test.*|*.test.*|*.spec.*) exit 0 ;;
+  *_test.*|*.test.*|*.spec.*|*_spec.*) exit 0 ;;
 esac
 
 # ── Trigger (segment-exact demos/examples, or basename prefix) ───────────────
 fire=0
-for seg in "${segs[@]}"; do
+for seg in "${segs[@]:-}"; do
   case "$seg" in
     demos|examples) fire=1; break ;;
   esac
