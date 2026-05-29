@@ -1,1 +1,2 @@
 {"ts":"2026-05-26T22:05:58Z","ev":"plan","pl":"2026-05-26-session-scoped-lock-nag.md","st":"complete","e":"47 hook-contract tests PASS; plan-scope-check PASS; lock verified"}
+{"ts":"2026-05-29T12:49:36Z","ev":"plan","pl":"2026-05-29-demonstration-fidelity.md","st":"complete","e":"PR #50 merged d3142d7; 7/7 CI green; v6.2.0 tagged+released; code review PASS"}
