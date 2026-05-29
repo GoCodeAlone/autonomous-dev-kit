@@ -3,7 +3,7 @@
 **Date:** 2026-05-29
 **Branch:** feat/demonstration-fidelity-2026-05-29T1128
 **Author:** autonomous pipeline (dogfood)
-**Status:** Draft (rev 2 — post design-phase adversarial review)
+**Status:** Draft (rev 3 — post design-phase adversarial review, cycle 2)
 
 ## Problem
 
@@ -82,15 +82,28 @@ Allowed, **with mandatory disclosure**:
   store, external service, clock) so the demo runs locally — provided the
   artifact's own code path executes unchanged, and the substitution is stated
   plainly ("data source is an in-memory fixture; the handler is the real one").
-  This is the `runtime-launch-validation` "ephemeral/local instance" spirit.
+  Precedent: `runtime-launch-validation`'s *Database migration* row (apply
+  against an *ephemeral* DB) and its *Fall-back when local launch is infeasible*
+  section both sanction running the real artifact against a stand-in dependency.
+
+**Reconciling with RLV's "no stub on either end" (important — these must not
+contradict):** RLV's "exercise a real interaction … not a mock or stub on either
+end" rule governs the **two ends of the boundary being demonstrated**. When the
+*artifact* is the boundary under demonstration, stubbing *it* is forbidden — that
+is the whole point. A *dependency sitting behind* the artifact (a `Store` the
+handler calls) is **not** an end of the demonstrated boundary; substituting it at
+a real interface seam, with disclosure, leaves the artifact's own end real. The
+forbidden case is stubbing the **artifact-under-demonstration**; the allowed case
+is substituting a **dependency** behind it. The RLV change-class row this design
+adds (Components §2) states this carve-out explicitly so the two skills agree.
 
 **Critical nuance (target fidelity, not language sameness):** cross-language is
 *not* the crime. A real client written in another language that crosses a real
 interface into the running artifact — e.g., a Python client making real HTTP
 calls to a running Go service — is a *valid* demo, **provided that crossing is
-actually exercised** (the RLV boundary rule: no mock/stub on either end). The
-rule keys on *did the real code run to produce this output*, never on *is the
-demo in the same language*.
+actually exercised** (both ends of *that* boundary are real — no stub on either
+end of the client↔service interaction). The rule keys on *did the real code run
+to produce this output*, never on *is the demo in the same language*.
 
 ## Approaches considered
 
@@ -145,9 +158,15 @@ completion-claim discipline do.
    another language."*
 
 2. **Pipeline wiring (cross-refs):**
-   - `runtime-launch-validation`: new change-class row "Demonstration / example /
-     showcase artifact" + a "See also" entry. The demo must drive the real
-     artifact; reuses the boundary "no mock/stub on either end" rule.
+   - `runtime-launch-validation`: new change-class row + a "See also" entry.
+     **Exact row wording (so it does not contradict RLV's existing "no stub on
+     either end" boundary row):**
+     `| Demonstration / example / showcase artifact (anything built to show a
+     change working) | The real artifact, invoked through its real entry point;
+     output captured from that run | Output is produced by the real code path,
+     not literals; the artifact-under-demonstration is NOT stubbed; any
+     substituted *dependency* sits behind a real interface seam and is disclosed.
+     See \`demonstration-fidelity\`. |`
    - `verification-before-completion`: claim-matrix row
      `demo/example works | the real artifact executed via the demo produced the
      shown output | hand-written/hard-coded output, a reimplementation`. **This
@@ -164,18 +183,28 @@ completion-claim discipline do.
    fidelity reminder pointing at the skill when the target path looks like a
    *demo* artifact.
 
-   **Tightened heuristic (cut false positives):** fire only when
-   - a path **segment** (directory) is exactly `demos` or `examples`, **or**
-   - the basename **starts with** `demo`, `example`, `showcase`, or `quickstart`
+   **Tightened heuristic — anchored to path semantics, NOT bare substrings**
+   (substrings `test`/`spec` would wrongly eat `latest`/`contest`/`attestation`/
+   `inspector`/`spectrum`/`retrospective` demos — empirically confirmed by the
+   reviewer). Split the path on `/` into segments.
+
+   **Fire only when** (trigger):
+   - a path **segment** is exactly `demos` or `examples`, **or**
+   - the **basename starts with** `demo`, `example`, `showcase`, or `quickstart`
      (e.g. `demo_*.py`, `quickstart.md`),
 
-   **and** the path does NOT contain any of: `_test.`, `test`, `spec`,
-   `fixture`, `testdata`, `node_modules`, `vendor`, `.git`. This deliberately
-   excludes Go's `example_test.go`, `sample_config.yaml` (does not start with an
-   excluded-trigger and `sample` is intentionally NOT a trigger), `testdata/`,
-   etc. Documented FP/FN: FN includes inline/README demos and demos in
-   normally-named files (owned by the skill, by design); residual FP is low and
-   advisory-only so cost is a single ignorable line.
+   **and NOT excluded.** Exclude only when (anchored, never bare-substring):
+   - any path **segment** ∈ {`test`, `tests`, `spec`, `specs`, `testdata`,
+     `fixtures`, `vendor`, `node_modules`, `.git`}, **or**
+   - the **basename** matches `*_test.*`, `*.test.*`, or `*.spec.*`.
+
+   Verified outcomes: excludes `example_test.go` (basename `*_test.*`),
+   `sample_config.yaml` (`sample` is not a trigger), `testdata/foo.json`
+   (segment `testdata`); **keeps** `examples/latest-feature-demo.py`,
+   `examples/attestation-demo.go`, `demo_inspector.py` (no excluded segment,
+   basename not a test/spec suffix). FN by design: inline/README demos and demos
+   in normally-named files (owned by the skill). Residual FP is low and
+   advisory-only — a single ignorable line.
 
    **Dedup:** session-scoped, keyed by `<session-id>:<sha of path>` appended to
    `.claude/autodev-state/demo-fidelity-seen.jsonl` (one reminder per path per
@@ -274,6 +303,13 @@ bump 6.1.5→6.2.0). No state migration. Dedup files under
 `.claude/autodev-state/demo-fidelity-seen.jsonl` are untracked by git and benign
 if left on disk after rollback. Safe, single-step.
 
+**Granular neutralization (no full revert needed):** if the advisory hook proves
+noisy in production, it can be disabled *without* touching the load-bearing skill
+or the `verification-before-completion` row — either remove only its
+`hooks.json` PreToolUse entry, or set `SUPERPOWERS_HOOKS_DISABLE=1`. The skill +
+claim-matrix row (the dominant-mode defense) survive independently. This is why
+bundling the hook in the same PR is low-risk.
+
 ## Self-challenge / adversarial-review resolutions
 
 - **TDD Iron Law (was Critical):** baseline now actually run (2 scenarios,
@@ -290,4 +326,21 @@ if left on disk after rollback. Safe, single-step.
 - **Discoverability untested (was Important):** discoverability subagent scenario
   added to the plan; CSO description drafted above. Resolved.
 - **Single-PR justification (was Important):** user decision; the 9 files are one
-  cohesive feature; recorded as accepted. Resolved.
+  cohesive feature; recorded as accepted. Resolved. (Plus granular-neutralization
+  note in Rollback so a noisy hook need not force a full revert.)
+
+### Cycle-2 resolutions (rev 3)
+
+- **Hook exclusion over-excluded (NEW Important):** substring `test`/`spec`
+  exclusions replaced with path-**segment**-exact + basename-**suffix**-glob
+  anchoring. Keeps `examples/latest-*-demo.py` etc.; still excludes
+  `example_test.go`/`testdata/`. Resolved.
+- **RLV "no stub on either end" contradiction (NEW Important):** added an explicit
+  reconciliation paragraph in the Invariant + the **exact** RLV change-class row
+  wording in Components §2 carving out artifact-stub (forbidden) vs. disclosed
+  dependency-seam substitution (allowed); fixed the imprecise "ephemeral/local
+  instance" citation to RLV's DB-migration row + Fall-back section. Resolved.
+- **Discoverability non-gating (Minor):** accepted for this PR; the skill's plan
+  adds a one-time discoverability subagent check, and a follow-up to add a
+  periodic discoverability re-check to the audit cadence is noted (not blocking).
+- **Rollback granularity (Minor):** granular-neutralization note added. Resolved.
