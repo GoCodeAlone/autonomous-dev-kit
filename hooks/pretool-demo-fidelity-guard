@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# hooks/pretool-demo-fidelity-guard
+# PreToolUse hook (advisory, NEVER blocks): when an agent is about to write a
+# demonstration/example artifact, remind it that a demo MUST execute the real
+# artifact — no reimplementation, no hard-coded output, no stubbing the thing
+# being demonstrated. Substituting a *dependency* at a real interface seam is
+# allowed only if disclosed. See skills/demonstration-fidelity/SKILL.md.
+#
+# This is a best-effort, filename-detectable nudge only. The load-bearing
+# defense is the demonstration-fidelity skill (which covers inline / README /
+# normally-named / cross-language demos) plus the verification-before-completion
+# "demo/example works" claim-matrix row. This hook never blocks and never reads
+# file contents.
+#
+# Detection is anchored to path SEGMENTS + basename suffix globs — never bare
+# substrings — so `latest`/`contest`/`attestation`/`inspector`/`spectrum`
+# demos are not wrongly excluded while `example_test.go`/`testdata/`/`vendor/`
+# are.
+#
+# Global opt-out: set SUPERPOWERS_HOOKS_DISABLE=1
+
+set -euo pipefail
+
+[ "${SUPERPOWERS_HOOKS_DISABLE:-}" = "1" ] && exit 0
+
+# Require stdin (PreToolUse always sends a JSON payload).
+[ -t 0 ] && exit 0
+command -v jq >/dev/null 2>&1 || exit 0
+
+hook_input=$(cat || true)
+[ -z "$hook_input" ] && exit 0
+
+tool_name=$(printf '%s' "$hook_input" | jq -r '.tool_name // empty' 2>/dev/null || true)
+case "$tool_name" in
+  Write|Edit|MultiEdit) ;;
+  *) exit 0 ;;
+esac
+
+file_path=$(printf '%s' "$hook_input" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
+[ -z "$file_path" ] && exit 0
+
+# Lowercase so Examples/, Demo*, Showcase match case-insensitively.
+lc_path=$(printf '%s' "$file_path" | tr '[:upper:]' '[:lower:]')
+base=${lc_path##*/}
+
+# Split into path segments.
+IFS='/' read -r -a segs <<< "$lc_path" || true
+
+# ── Exclusion (segment-exact + basename suffix globs; never bare substrings) ─
+for seg in "${segs[@]}"; do
+  case "$seg" in
+    test|tests|spec|specs|testdata|fixtures|vendor|node_modules|.git) exit 0 ;;
+  esac
+done
+case "$base" in
+  *_test.*|*.test.*|*.spec.*) exit 0 ;;
+esac
+
+# ── Trigger (segment-exact demos/examples, or basename prefix) ───────────────
+fire=0
+for seg in "${segs[@]}"; do
+  case "$seg" in
+    demos|examples) fire=1; break ;;
+  esac
+done
+if [ "$fire" -eq 0 ]; then
+  case "$base" in
+    demo*|example*|showcase*|quickstart*) fire=1 ;;
+  esac
+fi
+[ "$fire" -eq 0 ] && exit 0
+
+# ── Session-scoped dedup ─────────────────────────────────────────────────────
+# PreToolUse payloads carry transcript_path, NOT session_id (cf.
+# hooks/pre-tool-scope-guard); derive the session key the same way.
+transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+session_key=""
+[ -n "$transcript_path" ] && session_key=$(basename "$transcript_path" 2>/dev/null || echo "")
+
+cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
+[ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+
+dedup_key=""
+if command -v sha256sum >/dev/null 2>&1; then
+  dedup_key=$(printf '%s' "${session_key}:${file_path}" | sha256sum 2>/dev/null | cut -d' ' -f1 || true)
+elif command -v shasum >/dev/null 2>&1; then
+  dedup_key=$(printf '%s' "${session_key}:${file_path}" | shasum -a 256 2>/dev/null | cut -d' ' -f1 || true)
+fi
+
+state_dir="${cwd_dir}/.claude/autodev-state"
+state_file="${state_dir}/demo-fidelity-seen"
+
+if [ -n "$dedup_key" ]; then
+  # Already nudged this session for this path → stay silent.
+  # (grep used as an `if` condition; errexit does not trip on conditions, so it
+  # is NOT wrapped in `|| true` — wrapping it would force the condition true.)
+  if [ -f "$state_file" ] && grep -qxF "$dedup_key" "$state_file" 2>/dev/null; then
+    exit 0
+  fi
+  # Record. Fail-OPEN: any state I/O failure must fall through to EMIT, never
+  # suppress. Guarded so `set -euo pipefail` cannot fail-CLOSED on an unwritable
+  # state dir, and so a failed `>>` redirection cannot leak to stderr (the
+  # group redirect applies before the inner append is attempted).
+  if mkdir -p "$state_dir" 2>/dev/null; then
+    { printf '%s\n' "$dedup_key" >> "$state_file"; } 2>/dev/null || true
+  fi
+fi
+
+reminder=$(cat <<'REMINDER'
+<IMPORTANT>
+You appear to be writing a demonstration/example artifact. A demo MUST execute the
+real artifact and show its actual output. Do NOT reimplement the logic, hard-code
+the output, or stub the thing being demonstrated. Substituting a *dependency* at a
+real interface seam is allowed only if disclosed. See autodev:demonstration-fidelity.
+</IMPORTANT>
+REMINDER
+)
+
+emit_additional_context() {
+    local event_name="$1"
+    local context="$2"
+    jq -n --arg event "$event_name" --arg context "$context" \
+        '{hookSpecificOutput:{hookEventName:$event,additionalContext:$context}}'
+}
+
+emit_additional_context "PreToolUse" "$reminder"
+exit 0
