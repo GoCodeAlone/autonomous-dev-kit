@@ -29,7 +29,7 @@
 |------|-------|-------|--------|
 | 1 | fix(scope-lock): require objective match for claims | Task 1, Task 2, Task 3, Task 4 | fix/issue-52-session-ownership |
 
-**Status:** Locked 2026-05-31T18:06:43Z
+**Status:** Complete 2026-05-31T18:14:36Z
 
 ---
 
