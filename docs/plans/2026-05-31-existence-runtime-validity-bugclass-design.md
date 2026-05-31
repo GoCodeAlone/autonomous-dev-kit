@@ -3,6 +3,8 @@
 **Status:** Approved (autonomous — user pre-authorized full-pipeline execution)
 **Date:** 2026-05-31
 **Issue:** https://github.com/GoCodeAlone/autonomous-dev-kit/issues/55
+**Adversarial review:** design-phase PASS at cycle 2 (cycle 1 = 0C/2I/3m, all
+resolved; cycle 2 = 0C/0I/1m, the lone Minor — part (b) wording — applied above).
 
 ## Problem
 
@@ -85,7 +87,7 @@ dry-run at design time), and a closing sentence gives an explicit `Clean` escape
 hatch (like the `Rollback story` row's built-in scoping):
 
 ```
-| **Existence / runtime-validity** | For a design/plan that touches an artifact another tool/contract consumes (registry manifest, plugin release, CI workflow step, API endpoint, config a tool reads): (a) for any artifact it *edits but did not create*, does it verify the artifact **exists** before the plan mutates it — an `ls`/`gh` at design time (e.g. confirm a target plugin has a `workflow-registry` manifest before editing it; a missing one forced a mid-execution amendment in the required_secrets sweep)? (b) for any artifact it *emits*, does it verify the **real consumer** accepts the emitted call — that it is a real command/schema, not `wfctl ci run --phase migrate` (no such subcommand) — by running/dry-running it or contract-checking the consumer's actual surface (you confirm the consumer exists, not that you pre-run output that may not exist yet)? Flag any design that asserts content correctness without the matching existence/behavior check. If the design neither edits an existing consumed artifact nor emits one a consumer must accept, mark **Clean**. Cheap to satisfy (usually one `ls`/`gh`/dry-run); complements `demonstration-fidelity` by pushing the check upstream into design/plan. |
+| **Existence / runtime-validity** | For a design/plan that touches an artifact another tool/contract consumes (registry manifest, plugin release, CI workflow step, API endpoint, config a tool reads): (a) for any artifact it *edits but did not create*, does it verify the artifact **exists** before the plan mutates it — an `ls`/`gh` at design time (e.g. confirm a target plugin has a `workflow-registry` manifest before editing it; a missing one forced a mid-execution amendment in the required_secrets sweep)? (b) for any artifact it *emits*, does it verify the emitted call targets a **real** consumer surface — e.g. confirm `wfctl ci run --phase migrate` is an actual subcommand/phase (it is not) by checking `wfctl help`/the consumer schema/a dry-run, rather than assuming the generated content merely parses (you confirm the consumer command/schema exists, not that you pre-run output that may not exist yet)? Flag any design that asserts content correctness without the matching existence/behavior check. If the design neither edits an existing consumed artifact nor emits one a consumer must accept, mark **Clean**. Cheap to satisfy (usually one `ls`/`gh`/dry-run); complements `demonstration-fidelity` by pushing the check upstream into design/plan. |
 ```
 
 Version: bump `6.2.1 → 6.2.2` (patch — additive skill content, no behavior
