@@ -144,6 +144,31 @@ test_session_start_json() {
   assert_hook_context_json "session-start" "SessionStart" "$output"
 }
 
+test_session_start_resume_target_checkpoint() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  write_transcript_with_users "$transcript" "initial broad task" "implement workflow admin authz"
+  mkdir -p "$tmp/.claude/autodev-state"
+  jq -nc \
+    --arg s "session.jsonl" \
+    --arg pl "docs/plans/p.md" \
+    --arg obj "implement workflow admin authz" \
+    '{ev:"session-lock",session:$s,pl:$pl,repo:"GoCodeAlone/example",branch:"feat/example",objective_excerpt:$obj}' \
+    > "$tmp/.claude/autodev-state/session-locks.jsonl"
+  output="$(run_hook session-start '{"source":"resume","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","session_id":"resume-target"}')"
+  if ! printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Resume target checkpoint")' >/dev/null; then
+    fail "session-start: resume target checkpoint missing: ${output}"
+    return
+  fi
+  if ! printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("implement workflow admin authz") and contains("docs/plans/p.md") and contains("lock snapshots are not ownership proof")' >/dev/null; then
+    fail "session-start: checkpoint missing objective/plan/ownership warning: ${output}"
+    return
+  fi
+  pass "session-start: resume target checkpoint includes objective and attributed locks"
+}
+
 test_pre_tool_scope_guard_does_not_block_force_push_inside_quoted_string() {
   # Destructive-command regexes must use the quote-stripped form of the
   # tool_input.command so that a documentation example inside a quoted
@@ -1744,6 +1769,7 @@ test_demo_fidelity_fail_open_when_state_unwritable() {
 require_jq
 test_session_start_json
 test_session_start_time_dedup_suppresses_rapid_refires
+test_session_start_resume_target_checkpoint
 test_wrapper_suppresses_unavailable_c_utf8_locale_noise
 test_prompt_strict_json
 test_prompt_strict_no_output_without_trigger
