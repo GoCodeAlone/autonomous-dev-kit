@@ -150,7 +150,7 @@ Per-skill host-conditional audit: [tests/cross-llm-coverage.md](tests/cross-llm-
 
 7. **alignment-check** - Activates after adversarial review of plan passes. Narrowly structural: every design requirement maps to a plan task; every plan task traces to a design requirement; the Scope Manifest is well-formed (forward + reverse + manifest trace via `tests/plan-scope-check.sh`).
 
-8. **scope-lock** - Activates immediately after `alignment-check` PASS. Stamps the plan with `Locked <timestamp>`, computes the manifest's sha256 into `<plan>.scope-lock`, commits both. From this point until completion (or an explicit user-approved amendment), the task list, PR count, and feature scope are immutable. Design backports that do not change the manifest are allowed; manifest changes go through ADR + alignment. The lock hash covers only the `## Scope Manifest` block, so explanatory design/task notes can evolve without invalidating scope. `subagent-driven-development` re-checks the lock between tasks; `finishing-a-development-branch` re-checks before any PR is created. When the design is fully complete, `bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-complete" <plan> --evidence "<verification>"` marks it `Complete`, removes the lock file, and prunes session reminder traces.
+8. **scope-lock** - Activates immediately after `alignment-check` PASS. Stamps the plan with `Locked <timestamp>`, computes the manifest's sha256 into `<plan>.scope-lock`, commits both. From this point until completion (or an explicit user-approved amendment), the task list, PR count, and feature scope are immutable. Design backports that do not change the manifest are allowed; manifest changes go through ADR + alignment. The lock hash covers only the `## Scope Manifest` block, so explanatory design/task notes can evolve without invalidating scope. `subagent-driven-development` re-checks the lock between tasks; `finishing-a-development-branch` re-checks before any PR is created. Resume claims are session-owned: `scope-lock-claim` records repo/branch/objective metadata and blocks mismatched objective claims unless the handoff is explicit with `--confirmed`. When the design is fully complete, `bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-complete" <plan> --evidence "<verification>"` marks it `Complete`, removes the lock file, and prunes session reminder traces.
 
 9. **subagent-driven-development** or **executing-plans** - Activates with a locked plan. Dispatches fresh subagent per task with two-stage review (spec compliance, then code quality). Between tasks, re-runs the scope-lock check; on lock drift, stops the line and surfaces the discrepancy. Phase/task completions are logged in compressed JSONL to `.autodev/state/phase-progress.jsonl` when a locked plan continues.
 
@@ -174,7 +174,7 @@ Per-skill host-conditional audit: [tests/cross-llm-coverage.md](tests/cross-llm-
 
 `tests/plan-scope-check.sh` verifies the Scope Manifest invariant. Three modes: `--plan <path>` (well-formedness — PR Count matches the grouping table; every task in the body appears in the table; etc.), `--verify-lock <path>` (manifest sha256 matches the `.scope-lock` file written at alignment time), and `--against-branch <plan>` (planned branches in the manifest exist locally or on origin). The autonomous pipeline runs all three at the appropriate gates; CI can run `--plan` against every plan in `docs/plans/`.
 
-`tests/hook-contracts.sh` verifies hook JSON and guard behavior without requiring Claude Code or Codex to be installed. It checks the host-neutral `hookSpecificOutput.additionalContext` schema, Stop-hook phase-continuation behavior, hard-blocker stops, compact JSONL state rows, and locked-plan backports that do not change the Scope Manifest.
+`tests/hook-contracts.sh` verifies hook JSON and guard behavior without requiring Claude Code or Codex to be installed. It checks the host-neutral `hookSpecificOutput.additionalContext` schema, Stop-hook phase-continuation behavior, hard-blocker stops, compact JSONL state rows, objective-bound `scope-lock-claim` behavior, and locked-plan backports that do not change the Scope Manifest.
 
 ## Strict-interpretation invariant
 
@@ -210,7 +210,7 @@ adversarial review challenges it explicitly.
 - **writing-plans** - Detailed implementation plans (with mandatory Scope Manifest)
 - **executing-plans** - Batch execution with checkpoints
 - **alignment-check** - Structural design ↔ plan trace (forward + reverse + manifest)
-- **scope-lock** - Once a plan passes alignment, the task list, PR count, and feature scope are immutable until completion or explicit user-approved amendment
+- **scope-lock** - Once a plan passes alignment, the task list, PR count, and feature scope are immutable until completion or explicit user-approved amendment; lock claims are objective-bound so resumed sessions do not accidentally take another work stream
 - **condensed-pipeline-writing** - Compact internal format for design, review, planning, backport, and phase-progress artifacts
 - **dispatching-parallel-agents** - Concurrent subagent workflows
 - **requesting-code-review** - Pre-review checklist

@@ -216,6 +216,39 @@ helper names are centralized in `pre-tool-scope-guard`'s
 `SESSION_LOCK_RECOGNIZED` variable. Claim is idempotent — re-claiming the
 same plan produces no duplicate row.
 
+The attribution row also records repo, branch, and a hash/excerpt of the
+latest user-visible objective from the current transcript when the host
+provides `transcript_path`. This is the guard against stale compacted context:
+a fresh or resumed session cannot silently claim a plan already owned by a
+different objective. If an existing row for the plan has a different objective
+hash, or legacy ownership cannot be verified, the claim is blocked with a
+resume-target checkpoint showing:
+
+- current repo, branch, plan, and objective excerpt;
+- recorded owner repo, branch, session, and objective excerpt;
+- the explicit re-anchor command.
+
+Intentional handoff is still allowed, but it must be explicit:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-claim" docs/plans/<plan>.md --confirmed
+```
+
+Use `--confirmed` only after the user-visible task, repo, branch, and locked
+plan have been shown and the user intentionally directs this session to take
+over that lock. The hook records `confirmed:true` in `session-locks.jsonl`.
+
+On compact/resume, the SessionStart hook emits a **Resume target checkpoint**
+with the latest user-visible objective and any locked plans attributed to the
+current session. Treat compacted summaries and lock snapshots as hints, not
+ownership proof. Before executing a locked plan after compaction, verify the
+checkpoint or run `scope-lock-claim`; if the objective conflicts, ask the user
+or use `--confirmed` only for an explicit handoff.
+
+Hosts without transcript identity cannot compare objective hashes. In those
+harnesses, perform the same re-anchor manually: show repo, branch, plan path,
+and latest user-visible task before proceeding against an existing lock.
+
 ## Abandoning a Lock (stopped pursuing)
 
 When work on a locked plan will not complete (user pivoted, design superseded,
@@ -269,7 +302,7 @@ status line back to `Locked YYYY-MM-DDTHH:MM:SSZ` by hand and re-run
 
 **Helpers (all under `hooks/`):**
 - `scope-lock-apply <plan>` — write the `.scope-lock` hash file (called by `alignment-check`).
-- `scope-lock-claim <plan>` — attribute an existing lock to the current session (resume after restart).
+- `scope-lock-claim <plan> [--confirmed]` — attribute an existing lock to the current session (resume after restart); blocks objective mismatch unless explicitly confirmed.
 - `scope-lock-complete <plan> --evidence "<verification>"` — close the lock as Complete.
 - `scope-lock-abandon <plan> --reason "<reason>"` — close the lock as Abandoned (no completion verification).
 - `scope-lock-publish <plan> [--base <branch>]` — publish a Locked plan + its `.scope-lock` sidecar to the default branch via a chore PR. Use when the design+plan branch will not merge to main (e.g., separate per-PR feature branches consume the plan markdown but not the lock file).

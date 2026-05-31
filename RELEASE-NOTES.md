@@ -1,5 +1,28 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.2.1 — 2026-05-31
+
+Scope-lock claim ownership hardening for issue #52: a resumed/fresh session can
+no longer silently adopt another session's locked plan just because stale
+compacted context says it is active.
+
+- `hooks/pre-tool-scope-guard`: session-lock rows now include repo, branch,
+  latest user-visible objective hash/excerpt, and `confirmed:true` when an
+  intentional handoff is used. `scope-lock-claim` blocks if an existing owner
+  row for the plan has a different or unverifiable objective, unless the command
+  includes `--confirmed`.
+- `hooks/scope-lock-claim`: accepts `--confirmed` for explicit user-directed
+  handoff while preserving normal lock/hash validation.
+- `hooks/session-start`: compact/resume context now includes a **Resume target
+  checkpoint** with cwd, repo, branch, latest objective, and attributed locked
+  plans. It explicitly tells agents that compacted summaries and lock snapshots
+  are not ownership proof.
+- `skills/scope-lock/SKILL.md` and README document objective-bound claims,
+  mismatch handling, and manual re-anchor behavior for harnesses without
+  transcript identity.
+- `tests/hook-contracts.sh`: added contract tests for objective mismatch block,
+  matching objective allow, confirmed handoff, and resume checkpoint output.
+
 ## v6.2.0 — 2026-05-29
 
 New skill **demonstration-fidelity** + an advisory write-time hook, closing a verification-theater gap: an agent writes real code, then "demonstrates" it with a demo that never executes the real artifact — reimplementing the logic, hard-coding the output, or rewriting it in another language. The demo proves nothing yet is presented as proof.
