@@ -51,7 +51,9 @@ The two adjacent existing classes don't cover it:
 ## Global Design Guidance
 
 `Guidance: none found as docs/design-guidance.md; canon from README §Cross-LLM,
-docs/plans/2026-04-25-cross-llm-portability-design.md, ADR 0001.`
+docs/plans/2026-04-25-cross-llm-portability-design.md. No applicable ADR (the
+existing ADRs 0001/0002 govern the scope-lock lifecycle, not the review-skill
+checklist).`
 
 | guidance | design response |
 |---|---|
@@ -75,22 +77,16 @@ Single edit to `skills/adversarial-design-review/SKILL.md`: append one row to th
 declares (line 101) that it scans the design-phase classes, so the new class is
 covered in both invocations with no second edit.
 
-Row wording (matches existing declarative + concrete-example voice):
+Row wording, shown in **actual table-row form** (pipe-delimited, matching all 19
+existing rows — not a blockquote — so the implementer copies it verbatim into the
+table). The trigger is split by artifact *type* to avoid false positives on
+create-not-mutate designs (an artifact a design *creates* has nothing to `ls` or
+dry-run at design time), and a closing sentence gives an explicit `Clean` escape
+hatch (like the `Rollback story` row's built-in scoping):
 
-> **Existence / runtime-validity** — For any design/plan that mutates or
-> generates an external artifact (registry manifest, plugin release, CI workflow
-> step, API endpoint, config the tool consumes): does it verify (a) each
-> artifact it *mutates* actually **exists** — an `ls`/`gh` at design time (e.g.
-> confirm a target plugin has a `workflow-registry` manifest before the plan
-> edits it; a missing one forced a mid-execution amendment in the
-> required_secrets sweep) — and (b) each artifact it *generates* actually
-> **executes / contract-checks** against the real consumer — run it / dry-run it
-> (e.g. the emitted CI step is a real command, not `wfctl ci run --phase
-> migrate`, which no subcommand accepts), not merely that the intended content
-> parses? Flag any design that asserts content correctness without an existence
-> or behavior check. Cheap to satisfy (usually one `ls`/`gh`/dry-run);
-> complements `demonstration-fidelity` by pushing the check upstream into
-> design/plan.
+```
+| **Existence / runtime-validity** | For a design/plan that touches an artifact another tool/contract consumes (registry manifest, plugin release, CI workflow step, API endpoint, config a tool reads): (a) for any artifact it *edits but did not create*, does it verify the artifact **exists** before the plan mutates it — an `ls`/`gh` at design time (e.g. confirm a target plugin has a `workflow-registry` manifest before editing it; a missing one forced a mid-execution amendment in the required_secrets sweep)? (b) for any artifact it *emits*, does it verify the **real consumer** accepts the emitted call — that it is a real command/schema, not `wfctl ci run --phase migrate` (no such subcommand) — by running/dry-running it or contract-checking the consumer's actual surface (you confirm the consumer exists, not that you pre-run output that may not exist yet)? Flag any design that asserts content correctness without the matching existence/behavior check. If the design neither edits an existing consumed artifact nor emits one a consumer must accept, mark **Clean**. Cheap to satisfy (usually one `ls`/`gh`/dry-run); complements `demonstration-fidelity` by pushing the check upstream into design/plan. |
+```
 
 Version: bump `6.2.1 → 6.2.2` (patch — additive skill content, no behavior
 break) across the three manifests via `scripts/bump-version.sh 6.2.2`. Add a
@@ -111,17 +107,29 @@ dispatch). No new infra.
 
 The "components" are the two reviewer invocations. Validation is structural:
 - `tests/version-check.sh` confirms all three manifests agree post-bump.
-- `tests/skill-content-check.yml` (skill-content lint) passes on the edited
-  SKILL.md.
-- Inheritance is asserted by the existing `SKILL.md:101` line — verified present
-  before relying on it (no second edit needed). The plan-phase reviewer will now
-  enumerate the new class because it scans the design-phase table.
+- `skill-content-check.yml` runs `tests/skill-content-grep.sh`, which lints only
+  for forbidden host-specific tokens (`TaskCreate`/`TodoWrite`/`Sonnet`/`Opus`/…).
+  It does **not** validate table structure or row placement — so "passes" here
+  means "no forbidden host token introduced", and correct table placement +
+  pipe-formatting is author responsibility checked at PR review (the row is shown
+  in exact table form above to make that mechanical).
+- Inheritance is asserted by the existing `SKILL.md:101` line ("The plan-phase
+  reviewer scans the design-phase classes above") — verified present before
+  relying on it (no second edit needed). The plan-phase reviewer enumerates the
+  new class **only if** the `--phase=plan` dispatch prompt embeds the
+  design-phase table inline (per the skill's own dispatch instruction at
+  `SKILL.md:~261`, "paste the checklist for the chosen phase verbatim"). This is
+  a **pre-existing property shared by all 11 design-phase classes** — the new row
+  inherits the same coverage path, introducing no new gap. PR description will
+  note that plan-phase dispatches must embed the full (design + plan) checklist,
+  which they already must for every design-phase class.
 
 ## Assumptions
 
 | id | assumption | challenge | fallback |
 |---|---|---|---|
-| A1 | Design-phase classes are scanned in the plan phase | `SKILL.md:101` could change | Verified the line is present this session; if it were removed the row would need duplicating into the plan table. |
+| A1 | Design-phase classes are scanned in the plan phase | `SKILL.md:101` could change; plan-phase dispatch must embed the design-phase table | Verified `SKILL.md:101` present this session; coverage path is identical to all 11 existing design-phase classes (no new gap). If the line were removed the row would need duplicating into the plan table. |
+| A4 | Existence check must not mis-fire on create-not-mutate designs | A literal reviewer could flag a design that *creates* an artifact for "not verifying it exists" | Row scopes part (a) to artifacts "edited but did not create" and adds an explicit `Clean` escape hatch for designs that neither edit nor emit a consumed artifact. |
 | A2 | Patch bump is correct (additive, non-breaking) | Could be seen as minor feature | Additive checklist row changes no existing behavior or contract → patch per semver. |
 | A3 | `release-tag.yml` fires on plugin.json change at merge | Workflow could be disabled | Workflow file present + path-filtered on `.claude-plugin/plugin.json`; verified this session. |
 
