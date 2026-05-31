@@ -67,6 +67,53 @@ block() {
 #   hooks/scope-lock-apply, hooks/scope-lock-claim
 SESSION_LOCK_RECOGNIZED='scope-lock-apply|scope-lock-claim'
 
+latest_user_objective() {
+    [ -n "$transcript_path" ] && [ -f "$transcript_path" ] || return 0
+    jq -rs '
+        map(select((.type // "") == "user")) |
+        (last // empty) as $last |
+        ($last.message.content // $last.content // "") |
+        if type == "string" then .
+        elif type == "array" then ([.[] | select((.type // "") == "text") | (.text // "")] | join("\n"))
+        else "" end
+    ' "$transcript_path" 2>/dev/null \
+        | tr '\r\n\t' '   ' \
+        | awk '{$1=$1; print}' \
+        | cut -c 1-500
+}
+
+sha256_text() {
+    local text="$1"
+    [ -n "$text" ] || return 0
+    if command -v sha256sum >/dev/null 2>&1; then
+        printf '%s' "$text" | sha256sum | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        printf '%s' "$text" | shasum -a 256 | awk '{print $1}'
+    fi
+}
+
+current_repo_name() {
+    local remote repo
+    remote=$(cd "$cwd_dir" 2>/dev/null && git config --get remote.origin.url 2>/dev/null || true)
+    if [ -n "$remote" ]; then
+        repo="${remote%.git}"
+        repo="${repo##*:}"
+        repo="${repo#https://github.com/}"
+        printf '%s' "$repo"
+        return 0
+    fi
+    basename "$cwd_dir"
+}
+
+current_branch_name() {
+    cd "$cwd_dir" 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null || true
+}
+
+claim_confirmed() {
+    local cmd="$1"
+    printf '%s' "$cmd" | grep -qE '(^|[[:space:]])--confirmed([[:space:]]|$)'
+}
+
 record_session_lock() {
     local cmd="$1"
     [ -n "$session_key" ] || return 0
@@ -81,6 +128,13 @@ record_session_lock() {
     local state_dir="${cwd_dir}/.claude/autodev-state"
     mkdir -p "$state_dir" 2>/dev/null || return 0
     local state_file="${state_dir}/session-locks.jsonl"
+    local objective_excerpt objective_hash repo_name branch_name confirmed
+    objective_excerpt=$(latest_user_objective || true)
+    objective_hash=$(sha256_text "$objective_excerpt" || true)
+    repo_name=$(current_repo_name || true)
+    branch_name=$(current_branch_name || true)
+    confirmed=0
+    claim_confirmed "$cmd" && confirmed=1
 
     # Dedupe: skip if the (session, plan) row already exists.
     if [ -f "$state_file" ]; then
@@ -91,13 +145,53 @@ record_session_lock() {
         fi
     fi
 
+    if printf '%s' "$cmd" | grep -qE 'scope-lock-claim' && [ -f "$state_file" ] && [ "$confirmed" != "1" ]; then
+        local conflict
+        conflict=$(jq -r \
+            --arg s "$session_key" \
+            --arg pl "$plan_arg" \
+            --arg oh "$objective_hash" '
+            select(.ev=="session-lock" and .pl==$pl and (.session // "") != $s) |
+            select(
+                (($oh == "") or ((.objective_sha256 // "") == "") or ((.objective_sha256 // "") != $oh))
+            ) |
+            [
+                (.session // "?"),
+                (.repo // "?"),
+                (.branch // "?"),
+                (.objective_excerpt // "?")
+            ] | @tsv
+        ' "$state_file" 2>/dev/null | head -1 || true)
+        if [ -n "$conflict" ]; then
+            local owner_session owner_repo owner_branch owner_objective reason
+            IFS=$'\t' read -r owner_session owner_repo owner_branch owner_objective <<EOF
+$conflict
+EOF
+            reason="Scope-lock claim blocked — objective mismatch or unverifiable ownership for ${plan_arg}."
+            reason="${reason} Current repo=${repo_name:-?} branch=${branch_name:-?} objective=\"${objective_excerpt:-?}\"."
+            reason="${reason} Recorded owner session=${owner_session:-?} repo=${owner_repo:-?} branch=${owner_branch:-?} objective=\"${owner_objective:-?}\"."
+            reason="${reason} If the user explicitly directed this handoff after seeing the repo/branch/plan/objective, rerun: bash hooks/scope-lock-claim ${plan_arg} --confirmed"
+            block "$reason"
+        fi
+    fi
+
     local ts
     ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     jq -nc \
         --arg ts "$ts" \
         --arg session "$session_key" \
         --arg pl "$plan_arg" \
-        '{ts:$ts,ev:"session-lock",session:$session,pl:$pl}' \
+        --arg repo "$repo_name" \
+        --arg branch "$branch_name" \
+        --arg objective_sha256 "$objective_hash" \
+        --arg objective_excerpt "$objective_excerpt" \
+        --arg confirmed "$confirmed" \
+        '{ts:$ts,ev:"session-lock",session:$session,pl:$pl}
+         + (if $repo != "" then {repo:$repo} else {} end)
+         + (if $branch != "" then {branch:$branch} else {} end)
+         + (if $objective_sha256 != "" then {objective_sha256:$objective_sha256} else {} end)
+         + (if $objective_excerpt != "" then {objective_excerpt:$objective_excerpt} else {} end)
+         + (if $confirmed == "1" then {confirmed:true} else {} end)' \
         >> "$state_file" 2>/dev/null || true
 }
 
