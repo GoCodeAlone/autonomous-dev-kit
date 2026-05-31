@@ -30,7 +30,7 @@
 |------|-------|-------|--------|
 | 1 | feat: add Existence/runtime-validity bug-class to adversarial-design-review (#55) | Task 1, Task 2, Task 3 | feat/existence-runtime-validity-bugclass-55 |
 
-**Status:** Draft
+**Status:** Locked 2026-05-31T22:07:47Z
 
 ---
 
