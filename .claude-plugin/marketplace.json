@@ -9,7 +9,7 @@
     {
       "name": "autodev",
       "description": "Autonomous development workflow skills for coding agents",
-      "version": "6.2.1",
+      "version": "6.2.2",
       "source": "./",
       "author": {
         "name": "Jon Langevin",

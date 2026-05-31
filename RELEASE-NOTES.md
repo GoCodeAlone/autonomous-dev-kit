@@ -1,5 +1,21 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.2.2 — 2026-05-31
+
+New **Existence / runtime-validity** bug-class in `adversarial-design-review`
+(design-phase checklist, inherited by the plan phase), closing a 2-retro gap
+where a review verified an artifact's intended content but never that the
+artifact **exists** or **runs** as the design assumed (issue #55).
+
+- `skills/adversarial-design-review/SKILL.md`: one new design-phase row. (a) For
+  any artifact a design *edits but did not create*, require an `ls`/`gh`
+  existence check before mutation (the required_secrets sweep hit a missing
+  `workflow-registry` manifest at execution). (b) For any artifact a design
+  *emits*, require verifying the consumer surface is real (the smart-CI gen
+  emitted `wfctl ci run --phase migrate`, no such phase). Explicit `Clean`
+  escape hatch for designs that neither edit nor emit a consumed artifact.
+  Complements `demonstration-fidelity` by pushing the check upstream.
+
 ## v6.2.1 — 2026-05-31
 
 Scope-lock claim ownership hardening for issue #52: a resumed/fresh session can
