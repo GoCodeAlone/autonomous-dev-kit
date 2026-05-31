@@ -188,8 +188,10 @@ if { [ "$source_kind" = "compact" ] || [ "$source_kind" = "resume" ]; } && comma
         repo_name=$(cd "$cwd_dir" 2>/dev/null && git config --get remote.origin.url 2>/dev/null || true)
         if [ -n "$repo_name" ]; then
             repo_name="${repo_name%.git}"
-            repo_name="${repo_name##*:}"
-            repo_name="${repo_name#https://github.com/}"
+            case "$repo_name" in
+                git@*:*) repo_name="${repo_name##*:}" ;;
+                https://github.com/*) repo_name="${repo_name#https://github.com/}" ;;
+            esac
         else
             repo_name=$(basename "$cwd_dir")
         fi

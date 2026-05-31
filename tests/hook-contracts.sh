@@ -1401,7 +1401,7 @@ test_scope_lock_claim_confirmed_allows_objective_mismatch() {
   run_hook pre-tool-scope-guard "$owner_payload" >/dev/null 2>&1 || true
 
   claim_payload=$(jq -nc \
-    --arg cmd "bash hooks/scope-lock-claim docs/plans/p.md --confirmed" \
+    --arg cmd "bash hooks/scope-lock-claim --confirmed docs/plans/p.md" \
     --arg cwd "$tmp" --arg tp "$current_transcript" \
     '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
   output="$(run_hook pre-tool-scope-guard "$claim_payload" 2>&1 || true)"

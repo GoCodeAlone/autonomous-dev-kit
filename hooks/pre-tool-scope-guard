@@ -97,8 +97,10 @@ current_repo_name() {
     remote=$(cd "$cwd_dir" 2>/dev/null && git config --get remote.origin.url 2>/dev/null || true)
     if [ -n "$remote" ]; then
         repo="${remote%.git}"
-        repo="${repo##*:}"
-        repo="${repo#https://github.com/}"
+        case "$repo" in
+            git@*:*) repo="${repo##*:}" ;;
+            https://github.com/*) repo="${repo#https://github.com/}" ;;
+        esac
         printf '%s' "$repo"
         return 0
     fi
@@ -123,6 +125,11 @@ record_session_lock() {
     plan_arg=$(printf '%s' "$cmd" \
         | sed -nE "s/.*(${SESSION_LOCK_RECOGNIZED})[[:space:]]+\"?([^\" ;]+)\"?.*/\2/p" \
         | head -1 || true)
+    if [ "$plan_arg" = "--confirmed" ]; then
+        plan_arg=$(printf '%s' "$cmd" \
+            | sed -nE "s/.*scope-lock-claim[[:space:]]+--confirmed[[:space:]]+\"?([^\" ;]+)\"?.*/\1/p" \
+            | head -1 || true)
+    fi
     [ -n "$plan_arg" ] || return 0
 
     local state_dir="${cwd_dir}/.claude/autodev-state"
