@@ -11,7 +11,12 @@
 # .claude/autodev-state/session-locks.jsonl. Running this helper attributes the
 # lock to the current session.
 #
-# Usage: scope-lock-claim <plan-path>
+# Usage: scope-lock-claim <plan-path> [--confirmed]
+#
+# --confirmed is for an intentional user-directed handoff when the current
+# session objective differs from the recorded owner objective. The helper still
+# verifies lock integrity; hooks/pre-tool-scope-guard sees the flag and records
+# the session attribution with confirmed:true.
 #
 # Verifies:
 #   1. The plan exists and has a line-start "**Status:** Locked ...".
@@ -27,10 +32,24 @@
 
 set -euo pipefail
 
-plan="${1:-}"
+plan=""
+confirmed=0
+for arg in "$@"; do
+    case "$arg" in
+        --confirmed) confirmed=1 ;;
+        *)
+            if [ -z "$plan" ]; then
+                plan="$arg"
+            else
+                printf 'Usage: scope-lock-claim <plan-path> [--confirmed]\n' >&2
+                exit 3
+            fi
+            ;;
+    esac
+done
 
 if [ -z "$plan" ]; then
-    printf 'Usage: scope-lock-claim <plan-path>\n' >&2
+    printf 'Usage: scope-lock-claim <plan-path> [--confirmed]\n' >&2
     exit 3
 fi
 if [ ! -f "$plan" ]; then
@@ -66,5 +85,9 @@ fi
 # The helper's basename appears in the printed line so SESSION_LOCK_RECOGNIZED
 # matches the Bash tool command "bash hooks/scope-lock-claim <plan>" even if
 # this script's own stdout is captured by the caller.
-printf 'scope-lock-claim: attributing %s to current session\n' "$plan"
+if [ "$confirmed" = "1" ]; then
+    printf 'scope-lock-claim: attributing %s to current session (--confirmed)\n' "$plan"
+else
+    printf 'scope-lock-claim: attributing %s to current session\n' "$plan"
+fi
 exit 0

@@ -34,6 +34,7 @@ source_kind=""
 transcript_path=""
 agent_id=""
 session_id=""
+session_key=""
 cwd_dir="${PWD}"
 if command -v jq >/dev/null 2>&1; then
     source_kind=$(printf '%s' "$hook_input"     | jq -r '.source // empty'           2>/dev/null || true)
@@ -43,6 +44,7 @@ if command -v jq >/dev/null 2>&1; then
     cwd_from_hook=$(printf '%s' "$hook_input"   | jq -r '.cwd // empty'              2>/dev/null || true)
     [ -n "$cwd_from_hook" ] && cwd_dir="$cwd_from_hook"
 fi
+[ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
 
 # Skip injection for subagent contexts entirely. Codex's
 # run_pending_session_start_hooks fires per subagent spawn; without this
@@ -57,6 +59,7 @@ fi
 
 STATE_DIR="${cwd_dir}/.claude/autodev-state"
 STATE_FILE="${STATE_DIR}/in-progress.jsonl"
+SESSION_LOCKS_FILE="${STATE_DIR}/session-locks.jsonl"
 SEEN_FILE="${STATE_DIR}/session-start-seen"
 SESSION_ID_FILE="${STATE_DIR}/current-session-id"
 LAST_EMIT_FILE="${STATE_DIR}/session-start-last-emit"
@@ -145,6 +148,7 @@ if { [ "$source_kind" = "compact" ] || [ "$source_kind" = "resume" ]; } && comma
     fi
 
     original_task=""
+    latest_task=""
     if [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
         original_task=$(jq -rs '
             map(select((.type // "") == "user")) |
@@ -155,9 +159,60 @@ if { [ "$source_kind" = "compact" ] || [ "$source_kind" = "resume" ]; } && comma
             else "" end
         ' "$transcript_path" 2>/dev/null || true)
         original_task="${original_task:0:4000}"
+
+        latest_task=$(jq -rs '
+            map(select((.type // "") == "user")) |
+            (last // empty) as $last |
+            ($last.message.content // $last.content // "") |
+            if type == "string" then .
+            elif type == "array" then ([.[] | select((.type // "") == "text") | (.text // "")] | join("\n"))
+            else "" end
+        ' "$transcript_path" 2>/dev/null || true)
+        latest_task=$(printf '%s' "$latest_task" | tr '\r\n\t' '   ' | awk '{$1=$1; print}')
+        latest_task="${latest_task:0:500}"
     fi
 
-    if [ -n "$activity" ] || [ -n "$original_task" ]; then
+    resume_checkpoint=""
+    attributed_locks=""
+    if [ -n "$session_key" ] && [ -f "$SESSION_LOCKS_FILE" ]; then
+        attributed_locks=$(jq -r --arg session "$session_key" '
+            select(.ev == "session-lock" and .session == $session) |
+            "- plan=" + (.pl // "?") +
+            " repo=" + (.repo // "?") +
+            " branch=" + (.branch // "?") +
+            (if (.objective_excerpt // "") != "" then " objective=\"" + .objective_excerpt + "\"" else "" end) +
+            (if (.confirmed // false) == true then " confirmed=true" else "" end)
+        ' "$SESSION_LOCKS_FILE" 2>/dev/null | awk 'NF && !seen[$0]++' || true)
+    fi
+    if [ -n "$latest_task" ] || [ -n "$attributed_locks" ]; then
+        repo_name=$(cd "$cwd_dir" 2>/dev/null && git config --get remote.origin.url 2>/dev/null || true)
+        if [ -n "$repo_name" ]; then
+            repo_name="${repo_name%.git}"
+            case "$repo_name" in
+                git@*:*) repo_name="${repo_name##*:}" ;;
+                https://github.com/*) repo_name="${repo_name#https://github.com/}" ;;
+            esac
+        else
+            repo_name=$(basename "$cwd_dir")
+        fi
+        branch_name=$(cd "$cwd_dir" 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+        [ -n "$branch_name" ] || branch_name="?"
+        resume_checkpoint=$'## Resume target checkpoint\n\n'
+        resume_checkpoint+=$'- cwd: '"$cwd_dir"$'\n'
+        resume_checkpoint+=$'- repo: '"${repo_name:-?}"$'\n'
+        resume_checkpoint+=$'- branch: '"$branch_name"$'\n'
+        if [ -n "$latest_task" ]; then
+            resume_checkpoint+=$'- latest user-visible objective: '"$latest_task"$'\n'
+        fi
+        if [ -n "$attributed_locks" ]; then
+            resume_checkpoint+=$'\nAttributed locked plans for this session:\n'"$attributed_locks"$'\n'
+        else
+            resume_checkpoint+=$'\nAttributed locked plans for this session: none\n'
+        fi
+        resume_checkpoint+=$'\nBefore executing any locked plan, verify repo, branch, plan, and latest objective above. Compacted summaries and lock snapshots are not ownership proof; only a matching session-lock attribution or a successful `scope-lock-claim` re-anchor is ownership proof.'
+    fi
+
+    if [ -n "$activity" ] || [ -n "$original_task" ] || [ -n "$resume_checkpoint" ]; then
         resumption_section=$'\n\n<autodev-resumption-context source="'"$source_kind"$'">'
         case "$source_kind" in
             compact) source_phrase="just had a context-compaction event" ;;
@@ -165,6 +220,9 @@ if { [ "$source_kind" = "compact" ] || [ "$source_kind" = "resume" ]; } && comma
             *)       source_phrase="was just initialized with source=${source_kind}" ;;
         esac
         resumption_section+=$'\nThe session '"$source_phrase"$'. BEFORE answering the next message, reorient yourself using the context below. If you were mid-pipeline (brainstorming → writing-plans → alignment-check → subagent-driven-development → finishing-a-development-branch → pr-monitoring), pick up where you left off rather than re-deriving intent.'
+        if [ -n "$resume_checkpoint" ]; then
+            resumption_section+=$'\n\n'"$resume_checkpoint"
+        fi
         if [ -n "$original_task" ]; then
             # The first user message can contain arbitrary markup (tag-like
             # tokens, even a literal "</autodev-resumption-context>"),

@@ -65,6 +65,14 @@ emit_draft_fixture() {
     "$name" "## Scope Manifest" "$name" "$name" "**Status:** Locked" "$name"  > "$path"
 }
 
+write_transcript_with_users() {
+  local path="$1" first="$2" latest="$3"
+  {
+    jq -nc --arg text "$first" '{type:"user",message:{content:$text}}'
+    jq -nc --arg text "$latest" '{type:"user",message:{content:$text}}'
+  } > "$path"
+}
+
 assert_hook_context_json() {
   local name="$1"
   local event="$2"
@@ -134,6 +142,31 @@ test_session_start_json() {
   trap 'rm -rf "$tmp"' RETURN
   output="$(run_hook session-start '{"source":"startup","cwd":"'"$tmp"'"}')"
   assert_hook_context_json "session-start" "SessionStart" "$output"
+}
+
+test_session_start_resume_target_checkpoint() {
+  local tmp transcript output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  transcript="$tmp/session.jsonl"
+  write_transcript_with_users "$transcript" "initial broad task" "implement workflow admin authz"
+  mkdir -p "$tmp/.claude/autodev-state"
+  jq -nc \
+    --arg s "session.jsonl" \
+    --arg pl "docs/plans/p.md" \
+    --arg obj "implement workflow admin authz" \
+    '{ev:"session-lock",session:$s,pl:$pl,repo:"GoCodeAlone/example",branch:"feat/example",objective_excerpt:$obj}' \
+    > "$tmp/.claude/autodev-state/session-locks.jsonl"
+  output="$(run_hook session-start '{"source":"resume","cwd":"'"$tmp"'","transcript_path":"'"$transcript"'","session_id":"resume-target"}')"
+  if ! printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("Resume target checkpoint")' >/dev/null; then
+    fail "session-start: resume target checkpoint missing: ${output}"
+    return
+  fi
+  if ! printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("implement workflow admin authz") and contains("docs/plans/p.md") and contains("lock snapshots are not ownership proof")' >/dev/null; then
+    fail "session-start: checkpoint missing objective/plan/ownership warning: ${output}"
+    return
+  fi
+  pass "session-start: resume target checkpoint includes objective and attributed locks"
 }
 
 test_pre_tool_scope_guard_does_not_block_force_push_inside_quoted_string() {
@@ -1282,6 +1315,110 @@ test_scope_lock_claim_writes_are_idempotent() {
   pass "scope-lock-claim: dedupe keeps session-locks.jsonl at one row per (session, plan)"
 }
 
+test_scope_lock_claim_blocks_objective_mismatch() {
+  local tmp owner_transcript current_transcript owner_payload claim_payload output state_file
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  owner_transcript="$tmp/owner.jsonl"
+  current_transcript="$tmp/current.jsonl"
+  write_transcript_with_users "$owner_transcript" "start broad" "implement hover browser auth"
+  write_transcript_with_users "$current_transcript" "start broad" "implement workflow admin authz"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  owner_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-apply docs/plans/p.md" \
+    --arg cwd "$tmp" --arg tp "$owner_transcript" \
+    '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
+  run_hook pre-tool-scope-guard "$owner_payload" >/dev/null 2>&1 || true
+
+  claim_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-claim docs/plans/p.md" \
+    --arg cwd "$tmp" --arg tp "$current_transcript" \
+    '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
+  output="$(run_hook pre-tool-scope-guard "$claim_payload" 2>&1 || true)"
+  if ! printf '%s' "$output" | grep -q '"decision":"block"'; then
+    fail "scope-lock-claim: objective mismatch was not blocked, output: ${output}"
+    return
+  fi
+  state_file="$tmp/.claude/autodev-state/session-locks.jsonl"
+  if jq -e --arg s "current.jsonl" --arg pl "docs/plans/p.md" \
+      'select(.ev=="session-lock" and .session==$s and .pl==$pl)' "$state_file" >/dev/null 2>&1; then
+    fail "scope-lock-claim: mismatch wrote current-session row: $(cat "$state_file")"
+    return
+  fi
+  pass "scope-lock-claim: blocks objective mismatch"
+}
+
+test_scope_lock_claim_allows_matching_objective() {
+  local tmp owner_transcript current_transcript owner_payload claim_payload output state_file
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  owner_transcript="$tmp/owner.jsonl"
+  current_transcript="$tmp/current.jsonl"
+  write_transcript_with_users "$owner_transcript" "start broad" "implement hover browser auth"
+  write_transcript_with_users "$current_transcript" "different first prompt" "implement hover browser auth"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  owner_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-apply docs/plans/p.md" \
+    --arg cwd "$tmp" --arg tp "$owner_transcript" \
+    '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
+  run_hook pre-tool-scope-guard "$owner_payload" >/dev/null 2>&1 || true
+
+  claim_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-claim docs/plans/p.md" \
+    --arg cwd "$tmp" --arg tp "$current_transcript" \
+    '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
+  output="$(run_hook pre-tool-scope-guard "$claim_payload" 2>&1 || true)"
+  if printf '%s' "$output" | grep -q '"decision":"block"'; then
+    fail "scope-lock-claim: matching objective was blocked, output: ${output}"
+    return
+  fi
+  state_file="$tmp/.claude/autodev-state/session-locks.jsonl"
+  if ! jq -e --arg s "current.jsonl" --arg pl "docs/plans/p.md" \
+      'select(.ev=="session-lock" and .session==$s and .pl==$pl and (.objective_sha256|length == 64))' \
+      "$state_file" >/dev/null; then
+    fail "scope-lock-claim: matching objective row missing metadata: $(cat "$state_file")"
+    return
+  fi
+  pass "scope-lock-claim: allows matching objective"
+}
+
+test_scope_lock_claim_confirmed_allows_objective_mismatch() {
+  local tmp owner_transcript current_transcript owner_payload claim_payload output state_file
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  owner_transcript="$tmp/owner.jsonl"
+  current_transcript="$tmp/current.jsonl"
+  write_transcript_with_users "$owner_transcript" "start broad" "implement hover browser auth"
+  write_transcript_with_users "$current_transcript" "start broad" "implement workflow admin authz"
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
+  emit_locked_fixture "$tmp/docs/plans/p.md" "p"
+  owner_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-apply docs/plans/p.md" \
+    --arg cwd "$tmp" --arg tp "$owner_transcript" \
+    '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
+  run_hook pre-tool-scope-guard "$owner_payload" >/dev/null 2>&1 || true
+
+  claim_payload=$(jq -nc \
+    --arg cmd "bash hooks/scope-lock-claim --confirmed docs/plans/p.md" \
+    --arg cwd "$tmp" --arg tp "$current_transcript" \
+    '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd,transcript_path:$tp}')
+  output="$(run_hook pre-tool-scope-guard "$claim_payload" 2>&1 || true)"
+  if printf '%s' "$output" | grep -q '"decision":"block"'; then
+    fail "scope-lock-claim: confirmed mismatch was blocked, output: ${output}"
+    return
+  fi
+  state_file="$tmp/.claude/autodev-state/session-locks.jsonl"
+  if ! jq -e --arg s "current.jsonl" --arg pl "docs/plans/p.md" \
+      'select(.ev=="session-lock" and .session==$s and .pl==$pl and .confirmed==true)' \
+      "$state_file" >/dev/null; then
+    fail "scope-lock-claim: confirmed handoff row missing: $(cat "$state_file")"
+    return
+  fi
+  pass "scope-lock-claim: confirmed flag allows objective mismatch"
+}
+
 test_scope_lock_claim_rejects_unlocked_plan() {
   local tmp rc
   tmp="$(mktemp -d)"
@@ -1632,6 +1769,7 @@ test_demo_fidelity_fail_open_when_state_unwritable() {
 require_jq
 test_session_start_json
 test_session_start_time_dedup_suppresses_rapid_refires
+test_session_start_resume_target_checkpoint
 test_wrapper_suppresses_unavailable_c_utf8_locale_noise
 test_prompt_strict_json
 test_prompt_strict_no_output_without_trigger
@@ -1669,6 +1807,9 @@ test_pre_tool_scope_guard_block_exits_zero_with_stderr_reason
 test_subagent_scope_guard_block_exits_zero_with_stderr_reason
 test_scope_lock_claim_writes_session_attribution
 test_scope_lock_claim_writes_are_idempotent
+test_scope_lock_claim_blocks_objective_mismatch
+test_scope_lock_claim_allows_matching_objective
+test_scope_lock_claim_confirmed_allows_objective_mismatch
 test_scope_lock_claim_rejects_unlocked_plan
 test_scope_lock_claim_rejects_drift
 test_scope_lock_abandon_flips_status_and_prunes_state
