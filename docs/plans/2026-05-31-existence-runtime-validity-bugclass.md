@@ -46,12 +46,15 @@
 ### Task 1: Add the bug-class row to the design-phase checklist
 
 **Files:**
-- Modify: `skills/adversarial-design-review/SKILL.md` (insert after the `User-intent drift` row, line ~97, immediately before `## Bug-class checklist — plan phase` at line ~99)
+- Modify: `skills/adversarial-design-review/SKILL.md` (insert after the `User-intent drift` row at line ~97 — the LAST design-phase row — and before the blank line at ~line 98 that precedes the `## Bug-class checklist — plan phase` heading; do not collapse that blank separator)
 
-**Step 1: Verify the inheritance line the approach depends on still exists**
+**Step 1: Verify the inheritance line the approach depends on still exists + record the baseline class-row count**
 
 Run: `grep -n "plan-phase reviewer scans the design-phase classes above" skills/adversarial-design-review/SKILL.md`
 Expected: one match at ~line 101 (confirms the new row is scanned in both phases without a second edit). If absent → STOP, the design's A1 assumption is broken.
+
+Run: `grep -c "^| \*\*" skills/adversarial-design-review/SKILL.md`
+Expected: `19` (11 design-phase + 8 plan-phase class rows; table headers use `| Class | Definition |` and do NOT match `^| \*\*`). Record this baseline for Step 3.
 
 **Step 2: Insert the row**
 
@@ -67,7 +70,7 @@ Run: `awk '/## Bug-class checklist — design phase/{d=1} /## Bug-class checklis
 Expected: one line printed (the new row), proving it sits inside the design-phase section, not the plan-phase one.
 
 Run: `grep -c "^| \*\*" skills/adversarial-design-review/SKILL.md`
-Expected: count increased by exactly 1 vs main (was 19 class rows + 2 header-ish; assert the new total = previous + 1 — confirm with `git diff --stat`).
+Expected: `20` (the Step 1 baseline of 19 + exactly 1; zero header rows match this pattern). Confirm the single added row with `git diff --stat`.
 
 **Step 4: Skill-content lint (no forbidden host tokens)**
 
@@ -163,9 +166,9 @@ Rollback: `scripts/bump-version.sh 6.2.2 6.2.1` + revert commit; since the relea
 
 | Task | Change class | Verification | Expected |
 |---|---|---|---|
-| 1 | Documentation (skill prose) | `tests/skill-content-grep.sh` + awk section-scope check | exit 0; row inside design-phase table |
+| 1 | Documentation (skill prose) | `tests/skill-content-grep.sh` + awk section-scope check + `grep -c` count = 20 | exit 0; row inside design-phase table; count 19→20 |
 | 2 | Documentation | markdown anchor/order grep | v6.2.2 above v6.2.1 |
-| 3 | Version pin (manifests) | `tests/version-check.sh` | all three agree on 6.2.2 |
+| 3 | Version pin (manifests) | tag-uniqueness pre-check (`git ls-remote ... v6.2.2` empty, Task 3 Step 1) + `tests/version-check.sh` | no existing tag; all three agree on 6.2.2 |
 
 No runtime/build/deploy/migration/plugin-loading change → no `runtime-launch-validation` task required (none of the `finishing-a-development-branch` Step 1b triggers are met by a markdown + manifest-string change). The version bump is a manifest *string* change consumed only by `release-tag.yml`, whose own gate (`version-check.sh`) is run in Task 3.
 
