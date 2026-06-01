@@ -296,6 +296,26 @@ Codex subagents do not share a task list. Use these conventions instead:
 
 ---
 
+## Completion is not trusted until lead-verified
+
+A green `Implement: N` checkbox is a **claim, not evidence**. Regardless of who or what
+flips an `Implement: N` task to `completed` (an implementer, a `blockedBy`-clear, or the
+code-reviewer), the lead MUST run `autodev:verification-before-completion` — build + test
+from a clean tree, CI green — before treating that task as truly done or invoking
+`finishing-a-development-branch`. Recurring failure mode (infra-admin v1.1): a
+non-compiling tree and a CI-failing regression were both marked "done"; only the lead's
+verification caught them.
+
+The team-conventions rule "only the code-reviewer flips `Implement: N` to completed"
+remains team discipline, but **correctness rests on lead verification, which does not
+depend on who flipped the bit**. A deterministic hook that *blocks* the flip is
+infeasible — the pre-tool payload a hook sees carries the task id and status but not the
+task's subject or the calling sub-agent's identity, so a hook cannot tell an `Implement`
+task from any other or identify the caller. See
+`decisions/0003-implement-n-completion-trust-boundary.md`.
+
+---
+
 ## Red Flags
 
 **Never:**
