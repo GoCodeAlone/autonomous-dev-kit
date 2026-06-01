@@ -1,0 +1,24 @@
+name: Hooks Check
+on:
+  push:
+    paths:
+      - 'hooks/**'
+      - 'tests/hook-contracts.sh'
+      - 'tests/hook-stdout-discipline.sh'
+      - '.github/workflows/hooks-check.yml'
+  pull_request:
+    paths:
+      - 'hooks/**'
+      - 'tests/hook-contracts.sh'
+      - 'tests/hook-stdout-discipline.sh'
+jobs:
+  hooks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Hook contract tests
+        run: bash tests/hook-contracts.sh
+      - name: Hook stdout discipline tests
+        run: bash tests/hook-stdout-discipline.sh
