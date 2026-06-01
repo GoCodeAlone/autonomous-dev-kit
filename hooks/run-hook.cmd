@@ -55,4 +55,27 @@ if { [ "${LC_ALL:-}" = "C.UTF-8" ] || [ "${LC_CTYPE:-}" = "C.UTF-8" ] || [ "${LA
   [ "${LANG:-}" = "C.UTF-8" ] && export LANG=C
 fi
 
-exec bash "${SCRIPT_DIR}/${SCRIPT_NAME}" "$@"
+# Run the hook with stdout captured (stderr + stdin pass through untouched).
+# Enforce stdout JSON discipline: only valid-JSON-or-empty reaches the host's hook
+# parser; diagnostics that leak onto stdout (locale/perl/git warnings) are routed to
+# stderr. A block decision preceded by a warning is recovered, not dropped (#41).
+if command -v jq >/dev/null 2>&1; then
+  hook_out="$(bash "${SCRIPT_DIR}/${SCRIPT_NAME}" "$@")"
+  hook_rc=$?
+  if [ -z "$hook_out" ]; then
+    : # nothing to emit
+  elif printf '%s' "$hook_out" | jq -e . >/dev/null 2>&1; then
+    printf '%s\n' "$hook_out"                       # valid JSON as a whole
+  else
+    json_line="$(printf '%s\n' "$hook_out" | grep -E '^\{' | tail -1)"
+    if [ -n "$json_line" ] && printf '%s' "$json_line" | jq -e . >/dev/null 2>&1; then
+      printf '%s\n' "$hook_out" | grep -vxF "$json_line" >&2  # diagnostics -> stderr (full-line)
+      printf '%s\n' "$json_line"                              # recovered JSON -> stdout
+    else
+      printf '%s\n' "$hook_out" >&2                           # all noise -> stderr
+    fi
+  fi
+  exit "$hook_rc"
+else
+  exec bash "${SCRIPT_DIR}/${SCRIPT_NAME}" "$@"     # jq absent: pass through unchanged
+fi

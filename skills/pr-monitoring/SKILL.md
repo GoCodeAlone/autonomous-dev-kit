@@ -21,6 +21,50 @@ Invoked automatically by `finishing-a-development-branch` in autonomous mode aft
 
 When multiple PRs were created in the same session, prefer launching **one monitor agent that covers all PRs** to reduce GitHub API request volume. You may launch one agent per PR instead if the PRs are on unrelated codebases, if you anticipate heavy parallel CI load, or if a previous shared monitor was rate-limited. Default to the single-agent approach and only deviate with a reason.
 
+## Waiting for CI: the sanctioned pattern
+
+For a pure CI-wait (poll until checks settle, then act), prefer a blocking poll-loop
+over a long-lived monitor Agent. The pattern is host-scoped.
+
+<host: claude-code>
+**Recommended default — a bash poll-loop, not a long-lived monitor Agent.** Issue a
+`Bash` tool call with `run_in_background: true` running a **bounded** sleep-loop that
+polls `gh pr checks <pr>` until no check is `pending` (or a failure), prints a settle
+line, and exits. The harness re-invokes the lead **once** on exit (≈0 tokens while it
+sleeps); the lead then reads the result and admin-merges on `failures=0`.
+
+Bound the loop so it can never spin forever, e.g.:
+
+```bash
+for i in $(seq 1 120); do            # 120 × 30s = 60 min cap
+  raw=$(gh pr checks <pr> --json bucket 2>/dev/null)
+  fail=$(echo "$raw" | jq '[.[]|select(.bucket=="fail")]|length')
+  pend=$(echo "$raw" | jq '[.[]|select(.bucket=="pending")]|length')
+  { [ "$fail" != 0 ] && [ -n "$fail" ]; } && { echo "FAILURES=$fail"; break; }
+  { [ "$pend" = 0 ] || [ -z "$pend" ]; } && { echo "SETTLED"; break; }
+  sleep 30
+done
+```
+
+On the 120-iteration cap, print a timeout line and exit for the lead to restart.
+
+**Why not a background Agent for this:** a `run_in_background` **Agent** told to
+sleep-loop tends to return after ~1 cycle and re-complete repeatedly (the agent loop is
+not a blocking sleep) — observed early-exiting ~6× in one run. The bash sleep-loop
+genuinely blocks to completion.
+</host>
+
+<host: codex, cursor, opencode>
+Use your host's equivalent poll mechanism. Where no blocking-background-bash exists, the
+sanctioned fallback is **self-poll on each lead wakeup**: run `gh pr checks <pr>` once
+per turn and re-check on the next turn. This loses fire-on-event but is reliable; do not
+dispatch a background Agent expecting it to block on a sleep-loop.
+</host>
+
+**Fallback (all hosts):** the background-Agent monitor in "The Process" below remains the
+tool for multi-PR review-comment handling that needs active fix-and-push; note its
+early-exit failure mode and prefer the poll-loop / self-poll for a pure CI-wait.
+
 ## The Process
 
 Run a `balanced`-tier agent that monitors PRs in a loop for up to **60 minutes**, polling every **10 minutes**, until all CI checks pass and no unresolved reviews remain.

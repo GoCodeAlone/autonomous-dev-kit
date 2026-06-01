@@ -25,6 +25,9 @@ them.
 - Request code review per `skills/requesting-code-review/SKILL.md`
   using the adversarial-framing brief.
 - Address review per `skills/receiving-code-review/SKILL.md`.
+- **Never self-complete an `Implement: N` task.** Do not flip your own Implement task
+  to `completed` and do not clear its `blockedBy` to back-door completion. DM the
+  spec-reviewer when ready; the code-reviewer is the sole flipper of Implement tasks.
 
 ## Spec reviewer
 
@@ -46,6 +49,18 @@ them.
   `skills/requesting-code-review/SKILL.md` until verdict is SHIP-IT
   (or REVERT-AND-REWRITE after max rounds).
 - Reflexive approval is forbidden.
+- **You are the sole role that flips an `Implement: N` task to `completed`**, and only
+  after quality review passes. Flip BOTH the "Review quality:" task and the
+  corresponding "Implement:" task.
+
+## Lead / orchestrator
+
+- **A `completed` Implement-N is a claim, not evidence.** Whoever flipped it, run
+  `skills/verification-before-completion/SKILL.md` (clean build + tests + CI green)
+  before accepting the task as done or invoking
+  `skills/finishing-a-development-branch/SKILL.md`. Correctness rests on this gate, not
+  on who flipped the checkbox. See
+  `decisions/0003-implement-n-completion-trust-boundary.md`.
 
 ## Modes
 
