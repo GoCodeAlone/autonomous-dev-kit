@@ -1,5 +1,36 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.3.0 — 2026-06-01
+
+Pipeline-hardening release closing five recurring gate-miss / context-waste issues
+observed across autonomous runs and Codex compaction.
+
+- **`adversarial-design-review` — auth/authz chain-composition bug-class (#59):** a new
+  plan-phase row that walks the design's auth/authz chain component-by-component against
+  the plan's wiring and flags any gate enforced by a *client-asserted* value
+  (`evidence.granted_permissions`, a header) instead of server-side against an
+  authenticated principal.
+- **`pr-monitoring` — sanctioned bash poll-loop (#60):** documents the host-scoped
+  CI-wait pattern. Under Claude Code, a bounded `run_in_background` bash sleep-loop that
+  blocks to completion and re-invokes the lead once on settle (the prior background-Agent
+  monitor early-exited ~6× per run); Codex/Cursor use a self-poll-on-wakeup fallback.
+- **`subagent-driven-development` / `team-conventions` — completion trust-boundary (#58,
+  ADR 0003):** a flipped `Implement: N` is a claim, not evidence — the lead must run
+  `verification-before-completion` before trusting it. A deterministic hook-block is
+  infeasible (the pre-tool payload lacks the task subject + caller identity), so
+  correctness rests on lead verification, not on who flipped the checkbox.
+- **`run-hook.cmd` — stdout JSON discipline (#41):** the wrapper now captures each hook's
+  stdout and emits only valid-JSON-or-empty to the host's hook parser, recovering a block
+  decision even when a locale/diagnostic warning precedes it (previously such noise could
+  invalidate the hook's JSON). Diagnostics are routed to stderr; jq-absent hosts pass
+  through unchanged. New `tests/hook-stdout-discipline.sh`.
+- **`pretool-pr-review-reminder` — once-per-session (#61):** the gh-version/Copilot
+  reviewer reminder now emits once per session (deduped via a `.claude/autodev-state`
+  marker, quote-strip-matched so a quoted `--body` mentioning `gh pr create` no longer
+  trips it) and is reset by `pre-compact-snapshot` so it re-emits once after a compaction.
+- **CI:** new `hooks-check.yml` runs the hook contract + stdout-discipline tests on any
+  `hooks/`/test change, so these fixes are regression-gated.
+
 ## v6.2.2 — 2026-05-31
 
 New **Existence / runtime-validity** bug-class in `adversarial-design-review`
