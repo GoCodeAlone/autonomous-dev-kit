@@ -63,7 +63,7 @@ if command -v jq >/dev/null 2>&1; then
   hook_out="$(bash "${SCRIPT_DIR}/${SCRIPT_NAME}" "$@")"
   hook_rc=$?
   if [ -z "$hook_out" ]; then
-    : # nothing to emit
+    printf '{}\n'   # #66: emit a `{}` no-op (not empty) so strict hosts (Codex) accept it
   elif printf '%s' "$hook_out" | jq -e . >/dev/null 2>&1; then
     printf '%s\n' "$hook_out"                       # valid JSON as a whole
   else

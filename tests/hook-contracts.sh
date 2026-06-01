@@ -419,6 +419,24 @@ test_pretool_pr_review_json() {
   assert_hook_context_json "pretool-pr-review-reminder" "PreToolUse" "$output"
 }
 
+test_pre_compact_snapshot_emits_json_when_no_locked_plans() {
+  # #66: Codex rejects empty PreCompact stdout. The no-locked-plans path (common case)
+  # must emit a valid JSON object, not empty. Run the hook DIRECTLY (Codex-style — no wrapper).
+  local tmp; tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  local out; out="$(run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'"}')"
+  if printf '%s' "$out" | jq -e . >/dev/null 2>&1; then
+    pass "pre-compact-snapshot: emits valid JSON (not empty) with no locked plans (#66)"
+  else
+    fail "pre-compact-snapshot: no-locked-plans must emit valid JSON, got: [$out]"
+  fi
+  # The disabled path must also emit valid JSON (the host still invokes the hook).
+  local outd; outd="$(export SUPERPOWERS_HOOKS_DISABLE=1; run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'"}')"
+  printf '%s' "$outd" | jq -e . >/dev/null 2>&1 \
+    && pass "pre-compact-snapshot: emits valid JSON when disabled (#66)" \
+    || fail "pre-compact-snapshot: disabled path must emit valid JSON, got: [$outd]"
+}
+
 test_pr_reminder_dedup() {
   local tmp; tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
@@ -650,7 +668,7 @@ PLAN
     return
   fi
   compact_output="$(run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
-  if [ -n "$compact_output" ]; then
+  if printf '%s' "$compact_output" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
     fail "scope-lock-complete: expected completed plan to produce no pre-compact lock snapshot, got: ${compact_output}"
     return
   fi
@@ -1176,7 +1194,7 @@ test_pre_compact_ignores_prose_mention_of_locked_status() {
   mkdir -p "$tmp/docs/plans"
   emit_draft_fixture "$tmp/docs/plans/draft.md" "draft"
   output="$(run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
-  if [ -n "$output" ]; then
+  if printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
     fail "pre-compact-snapshot: prose mention of Locked status triggered snapshot, output: ${output}"
     return
   fi
@@ -1273,7 +1291,7 @@ test_pre_compact_ignores_single_workspace_lock_when_session_has_no_lock() {
   mkdir -p "$tmp/docs/plans"
   emit_locked_fixture "$tmp/docs/plans/active.md" "active"
   output="$(run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'","transcript_path":"'"$transcript"'"}')"
-  if [ -n "$output" ]; then
+  if printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
     fail "pre-compact-snapshot: single workspace lock falsely triggered fallback, output: ${output}"
     return
   fi
@@ -1811,6 +1829,7 @@ test_prompt_strict_uses_session_locked_plan_only
 test_prompt_strict_ignores_prose_mention_of_locked_status
 test_pretool_pr_review_json
 test_pr_reminder_dedup
+test_pre_compact_snapshot_emits_json_when_no_locked_plans
 test_posttool_pr_created_json
 test_pre_compact_snapshot_json
 test_wrapper_suppresses_pre_compact_locale_noise

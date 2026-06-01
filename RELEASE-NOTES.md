@@ -1,5 +1,23 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.3.1 — 2026-06-01
+
+Bug fix for **#66** — PreCompact hook returned invalid JSON on **Codex**.
+
+- Root cause: `hooks/pre-compact-snapshot` emitted **empty stdout** on its no-locked-plans
+  path (the common case at compaction) and other guard paths. Claude Code tolerates empty
+  PreCompact output; Codex rejects it as "invalid PreCompact hook JSON output". The v6.3.0
+  wrapper recovered JSON behind diagnostics but still emitted nothing for empty output.
+- Fix (defense-in-depth, both invocation paths): every exit path now emits a valid JSON
+  object — `hooks/pre-compact-snapshot` emits a `{}` no-op instead of empty (covers Codex
+  invoking the hook directly), and `hooks/run-hook.cmd` emits `{}` for any empty hook output
+  (covers the wrapper path for every hook). `{}` is a universal no-op on Claude Code and
+  valid JSON for Codex.
+- New regression `tests/hook-contracts.sh::test_pre_compact_snapshot_emits_json_when_no_locked_plans`
+  runs the installed hook the way Codex invokes it (directly, no wrapper) and asserts valid
+  JSON on the no-locked-plans + disabled paths; `tests/hook-stdout-discipline.sh` case (e)
+  asserts the wrapper emits `{}` for empty output. Both CI-gated by `hooks-check.yml`.
+
 ## v6.3.0 — 2026-06-01
 
 Pipeline-hardening release closing seven recurring gate-miss / context-waste issues
