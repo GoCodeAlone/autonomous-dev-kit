@@ -4,7 +4,7 @@
 **Date:** 2026-06-01
 **Issues:** #41, #58, #59, #60, #61 (GoCodeAlone/autonomous-dev-kit)
 **ADR:** decisions/0003-implement-n-completion-trust-boundary.md (#58)
-**Adversarial review:** cycle 1 = FAIL (1C/3I/3m, all resolved); #61 added (user-reported same session). cycle 2 = FAIL (1 new Important: pre-compact-snapshot early-exit would skip the #61 marker-clear → fixed: clear placed unconditionally before the early-exit) → resolved this revision.
+**Adversarial review:** cycle 1 = FAIL (1C/3I/3m, all resolved); #61 added (user-reported same session). cycle 2 = FAIL (1 new Important: pre-compact-snapshot early-exit would skip the #61 marker-clear → fixed: clear placed unconditionally before the early-exit). cycle 3 = PASS (converged; applied the empty-session_key guard).
 
 ## Problem
 
@@ -227,7 +227,9 @@ while the tree didn't compile / CI failed. So:
   it with the emit block (after the early-exit) would silently skip the clear in
   the common no-locked-plan case, leaving the reminder permanently silenced after
   the first PR. The regression test asserts the clear fires even when there are no
-  locked plans.
+  locked plans. Guard the clear with `[ -n "$session_key" ]` — when
+  `transcript_path` is absent (`session_key=""`), skip the clear (no blanket file
+  wipe), matching the reminder's emit-every-time degradation on identity-less hosts.
 - Degrade gracefully: no `transcript_path` (hookless/identity-less host) → fall
   back to current behavior (emit every time) rather than suppress, so a host that
   can't dedup still gets the advice.
