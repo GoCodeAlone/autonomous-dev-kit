@@ -15,8 +15,8 @@
 ## Scope Manifest
 
 **PR Count:** 1
-**Tasks:** 7
-**Estimated Lines of Change:** ~320 (informational; not enforced)
+**Tasks:** 9
+**Estimated Lines of Change:** ~340 (informational; not enforced)
 
 **Out of scope:**
 - A deterministic hook that *blocks* `TaskUpdate(status=completed)` on `Implement:*` (infeasible — ADR 0003).
@@ -29,9 +29,9 @@
 
 | PR # | Title | Tasks | Branch |
 |------|-------|-------|--------|
-| 1 | feat: v6.3.0 pipeline hardening — auth/authz bug-class, pr-monitoring pattern, completion trust-boundary, hook stdout-JSON discipline, reminder dedup (#41/#58/#59/#60/#61) | Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7 | feat/pipeline-hardening-4issues-v6.3.0 |
+| 1 | feat: v6.3.0 pipeline hardening (#41/#58/#59/#60/#61/#63/#64) | Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7, Task 8, Task 9 | feat/pipeline-hardening-4issues-v6.3.0 |
 
-**Status:** Locked 2026-06-01T05:35:54Z
+**Status:** Amended 2026-06-01T06:00:00Z (user-approved scope expansion to #63 + #64; see Amendment note + decisions/0004)
 
 ---
 
@@ -469,6 +469,48 @@ Rollback: `scripts/bump-version.sh 6.3.0 6.2.2` + revert; pre-merge revert preve
 > After merge: `release-tag.yml` auto-tags v6.3.0 + dispatches the marketplace. Create the GH Release from the RELEASE-NOTES v6.3.0 section (tag-only is the workflow's behavior; v6.2.0/6.2.2 precedent).
 
 ---
+
+### Task 8: #64 — session-start time-dedup Linux portability (amendment)
+
+**Discovered at execution:** Task 6's new `hooks-check.yml` ran `hook-contracts.sh` on
+ubuntu for the first time and surfaced a **pre-existing** Linux bug:
+`hooks/session-start` computes the last-emit mtime with BSD `stat -f %m` **before** GNU
+`stat -c %Y`. On Linux `stat -f` means "file system status", succeeds (exit 0), and
+prints fs info instead of the mtime → `[ "$last" -gt 0 ]` errors and the time-dedup
+never suppresses re-fires. User-approved amendment (#64).
+
+**Files:**
+- Modify: `hooks/session-start` (the `stat` ordering + numeric guard)
+- Modify: `.github/workflows/hooks-check.yml` (re-enable `hook-contracts.sh` once fixed)
+
+**Step 1: Fix the `stat` ordering** — GNU first, then BSD, then guard numeric:
+```bash
+last=$(stat -c %Y "$LAST_EMIT_FILE" 2>/dev/null || stat -f %m "$LAST_EMIT_FILE" 2>/dev/null || echo 0)
+case "$last" in (*[!0-9]*|'') last=0 ;; esac
+```
+**Step 2: Re-enable `hook-contracts.sh` in `hooks-check.yml`** (the CI gate is now real on Linux).
+**Step 3: Verify** — `bash tests/hook-contracts.sh` → `All hook contract tests passed.`
+(macOS: `stat -c %Y` fails → falls to BSD `stat -f %m`; Linux: `stat -c %Y` works.) CI on
+ubuntu confirms the time-dedup case now passes.
+**Step 4: Commit** — `fix(session-start): GNU stat -c %Y before BSD -f %m … (#64)`.
+Rollback: revert commit.
+
+### Task 9: #63 — Artifact-class precedent design-phase bug-class (amendment)
+
+**User-approved amendment (#63).** A design can pass mechanism-correctness review yet put
+an artifact in the wrong *place/shape* (v1.1: a scenario test fixture inside the
+production engine repo, when sibling scenarios own a `cmd/server/main.go`).
+
+**Files:**
+- Modify: `skills/adversarial-design-review/SKILL.md` (design-phase table, after `Repo-precedent conflicts`)
+
+**Step 1: Insert the row** (after `Repo-precedent conflicts`):
+```
+| **Artifact-class precedent** | Survey how the codebase already implements this *artifact class* — not just the *mechanism*. … Grep for sibling instances (`ls scenarios/*/cmd/server/main.go`, sibling plugins, migrations, CLI commands, fixtures) and confirm the design follows the established shape — or explicitly justifies divergence. … Run the decisive `ls`/`grep` for the artifact class, not just for the mechanism. |
+```
+**Step 2: Verify** — awk confirms the row is in the **design-phase** section; `bash tests/skill-content-grep.sh` PASS.
+**Step 3: Commit** — `feat(adversarial-design-review): add Artifact-class precedent design-phase bug-class (#63)`.
+Rollback: revert commit (additive prose row).
 
 ## Verification summary (change-class mapping)
 

@@ -253,6 +253,19 @@ while the tree didn't compile / CI failed. So:
   of client-asserted-permission theater in plans.
 - **#58/#60** are process/doc; no runtime security surface.
 
+## Amendment (2026-06-01, user-approved — see decisions/0004)
+
+Two items folded into v6.3.0 during execution, both user-approved (manifest 7 → 9 tasks,
+PR count unchanged):
+- **#64** — `hooks/session-start` time-dedup is broken on Linux (BSD `stat -f %m` tried
+  before GNU `stat -c %Y`; `stat -f` succeeds-but-wrong on Linux). Surfaced by Task 6's
+  `hooks-check.yml` running `hook-contracts.sh` on ubuntu for the first time. Fixed
+  (GNU-first + numeric guard) and `hook-contracts.sh` re-enabled in the CI gate.
+- **#63** — new design-phase `Artifact-class precedent` bug-class: survey how the codebase
+  implements the *artifact class* (where a scenario stands up a server, where a fixture
+  lives), not just the *mechanism*; grep for sibling instances and follow the established
+  shape or justify divergence.
+
 ## Infrastructure Impact
 
 None at runtime. Plugin skill/hook/doc changes + a version bump. Release path is
