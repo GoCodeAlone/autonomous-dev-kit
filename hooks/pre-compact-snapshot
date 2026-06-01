@@ -39,7 +39,10 @@ if [ -n "${session_key:-}" ]; then
         # grep -v exits 1 when no lines remain (only our key) — tolerate it under set -e.
         remaining="$(grep -vxF "$session_key" "$reminder_marker" 2>/dev/null || true)"
         if [ -n "$remaining" ]; then
-            printf '%s\n' "$remaining" > "$reminder_marker"   # keep other sessions' keys
+            # Atomic: write other sessions' keys to a temp file then rename.
+            printf '%s\n' "$remaining" > "${reminder_marker}.tmp" 2>/dev/null \
+                && mv "${reminder_marker}.tmp" "$reminder_marker" \
+                || rm -f "${reminder_marker}.tmp"
         else
             rm -f "$reminder_marker"                          # only our key → remove marker
         fi

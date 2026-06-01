@@ -69,7 +69,7 @@ if command -v jq >/dev/null 2>&1; then
   else
     json_line="$(printf '%s\n' "$hook_out" | grep -E '^\{' | tail -1)"
     if [ -n "$json_line" ] && printf '%s' "$json_line" | jq -e . >/dev/null 2>&1; then
-      printf '%s\n' "$hook_out" | grep -vF "$json_line" >&2   # diagnostics -> stderr
+      printf '%s\n' "$hook_out" | grep -vxF "$json_line" >&2  # diagnostics -> stderr (full-line)
       printf '%s\n' "$json_line"                              # recovered JSON -> stdout
     else
       printf '%s\n' "$hook_out" >&2                           # all noise -> stderr
