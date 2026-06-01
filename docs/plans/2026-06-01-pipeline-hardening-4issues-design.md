@@ -1,9 +1,10 @@
-# Autodev Pipeline Hardening (v6.3.0) — 4 Recurring Gate-Miss Fixes — Design
+# Autodev Pipeline Hardening (v6.3.0) — 5 Recurring Gate-Miss / Context-Waste Fixes — Design
 
 **Status:** Approved (autonomous — user pre-authorized full-pipeline execution; trigger v6.3.0 release after merge)
 **Date:** 2026-06-01
-**Issues:** #41, #58, #59, #60 (GoCodeAlone/autonomous-dev-kit)
+**Issues:** #41, #58, #59, #60, #61 (GoCodeAlone/autonomous-dev-kit)
 **ADR:** decisions/0003-implement-n-completion-trust-boundary.md (#58)
+**Adversarial review:** design cycle 1 = FAIL (1C/3I/3m) → all resolved this revision; #61 added (user-reported same session).
 
 ## Problem
 
@@ -27,6 +28,9 @@ autonomous runs + Codex compaction:
   team-conventions contract. In v1.1 this masked a non-compiling tree + a
   CI-failing hash regression both reported "done"; only the lead's
   verification-before-completion caught them.
+- **#61** — the `pretool-pr-review-reminder` hook injects its ~12-line gh-version
+  + Copilot-reviewer `<IMPORTANT>` block on **every** `gh pr create` (observed 7×
+  in one session) — wasted context for advice the agent already has.
 
 ## Goals
 
@@ -48,6 +52,9 @@ One coherent v6.3.0 release hardening the autonomous pipeline against these four
    is infeasible (see Design): a flipped `Implement: N` is NOT trusted-done until
    the lead runs `verification-before-completion` (build + test from a clean
    tree). Strengthen `subagent-driven-development` + `team-conventions` + ADR.
+5. **#61** — emit the pr-review reminder **once per session** (deduped via a
+   `.claude/autodev-state` marker like `session-start`), reset by the PreCompact
+   hook so it re-emits once after a compaction.
 
 ## Non-Goals
 
@@ -66,7 +73,7 @@ docs/plans/2026-04-25-cross-llm-portability-design.md, ADRs 0001/0002.`
 
 | guidance | response |
 |---|---|
-| Host-neutral / cross-LLM first | The wrapper fix (#41) is the host-neutral choke-point; the bash poll-loop (#60) and trust-boundary (#58) are host-described with Claude-Code/Codex variants. Bug-class (#59) is pure prose. |
+| Host-neutral / cross-LLM first | The wrapper fix (#41) is the host-neutral choke-point. #60 is explicitly **host-scoped**: bash poll-loop under `<host: claude-code>`, self-poll fallback documented for `<host: codex,cursor>` (no false cross-LLM claim). #58 trust-boundary + #59 bug-class + #61 dedup-marker are host-neutral prose/state. #61 degrades to emit-every-time on identity-less hosts. |
 | Checklist is the floor | #59 row joins the mandatory-scan plan-phase set. |
 | Don't claim enforcement you can't deliver | #58 explicitly rejects the infeasible hard-block and documents why (ADR) — directly applies the Existence/runtime-validity discipline (#55). |
 | Strict stdout discipline for hooks | #41 centralizes it in the wrapper, not per-hook. |
@@ -76,7 +83,9 @@ docs/plans/2026-04-25-cross-llm-portability-design.md, ADRs 0001/0002.`
 ### #59 — Auth/authz chain-composition bug-class (plan phase)
 
 Add one row to the **plan-phase** checklist of `skills/adversarial-design-review/
-SKILL.md` (after `Config-validation schema rules`):
+SKILL.md`. Place it **near the top** of the plan-phase table (right after
+`Verification-class mismatch`), not after the plugin-layout/config-schema rows —
+auth/authz is a security-class finding and ordering signals priority (m2):
 
 ```
 | **Auth/authz chain composition** | When the design names an auth/authz chain ("behind the X auth filter", "RBAC-enforced", "admin-only"), walk that chain component-by-component against the plan's actual wiring. For each gate, verify it is enforced **server-side against an authenticated principal**, not shape-matched by a client-asserted value. Flag any gate where the plan's check reads from request/client-supplied input (`evidence.granted_permissions`, a header, a body field) instead of an authenticated subject (`authz.Enforce(authenticatedSubject, …)`). A plan that wires a weaker gate than the design's chain implies = finding. |
@@ -88,50 +97,73 @@ design states the intent; the plan is where a weaker gate slips in.)
 ### #60 — Bash poll-loop as the sanctioned pr-monitoring pattern
 
 In `skills/pr-monitoring/SKILL.md`, add a **"Waiting for CI: the sanctioned
-pattern"** section near the top of the process and make the bash poll-loop the
-recommended default, demoting the long-lived background Agent to a documented
-fallback:
+pattern"** section near the top of the process. The recommendation is **host-scoped**
+(the bash poll-loop is a Claude-Code Bash-`run_in_background` construct; Codex/Cursor
+don't expose it identically):
 
-- **Recommended:** a `Bash` tool call with `run_in_background: true` running a
-  `for`/`until` sleep-loop that polls `gh pr checks` until no check is `pending`
-  (or a failure/timeout), then prints a settle line and exits. The harness
-  re-invokes the lead once on exit (≈0 tokens while sleeping). On settle the lead
-  reads the result and admin-merges on `failures=0`.
+- **`<host: claude-code>` — Recommended default:** a `Bash` tool call with
+  `run_in_background: true` running a bounded sleep-loop that polls `gh pr checks`
+  until no check is `pending` (or a failure), then prints a settle line and exits.
+  The harness re-invokes the lead once on exit (≈0 tokens while sleeping). On
+  settle the lead reads the result and admin-merges on `failures=0`. **Concrete
+  cap (m3):** bound the loop (e.g. `for i in $(seq 1 120)` × `sleep 30` = 60 min)
+  so it can never spin forever; on cap, print a timeout line and exit for the lead
+  to restart.
 - **Why:** a `run_in_background` **Agent** instructed to sleep-loop tends to return
   after ~1 cycle and re-complete repeatedly (the agent loop is not a blocking
-  sleep) — observed early-exiting ~6× (#60). The bash sleep-loop genuinely blocks.
-- **Fallback:** the existing background-Agent monitor remains documented for
-  multi-PR review-comment handling where active fix-and-push is needed; note its
-  early-exit failure mode and the self-poll fallback.
-- Cadence guidance: poll every 30–60s for fast checks; don't sleep past the
-  prompt-cache window unnecessarily; cap total wait.
+  sleep) — observed early-exiting ~6× (#60). The bash sleep-loop genuinely blocks
+  to completion.
+- **`<host: codex, cursor>`:** these hosts keep the existing `<host: codex,
+  opencode, cursor>` guidance (host's equivalent poll mechanism). Where no
+  blocking-background-bash exists, the sanctioned fallback is **self-poll on each
+  lead wakeup** — the lead runs `gh pr checks` once per turn and re-checks on the
+  next turn — which loses fire-on-event but is reliable. Document this explicitly
+  so the Codex path isn't left undefined.
+- **Fallback (all hosts):** the existing background-Agent monitor stays documented
+  for multi-PR review-comment handling needing active fix-and-push; note its
+  early-exit failure mode.
 
-### #41 — Wrapper-level locale + stdout-JSON discipline
+### #41 — Wrapper-level stdout-JSON discipline (+ keep existing locale logic)
 
 Harden `hooks/run-hook.cmd` (Unix portion — the choke-point every hook runs
-through):
+through). The **primary** fix is stdout discipline; the existing locale handling
+is already correct and stays.
 
-1. **Deterministic locale:** before exec, set `LC_ALL`/`LANG` to a locale that is
-   actually installed — prefer the existing valid locale; if the inherited locale
-   is `C.UTF-8`/unset and `C.UTF-8` is not installed, fall back to `C` (extends the
-   existing conditional fallback to also cover unset/empty + `LC_CTYPE`).
-2. **Stdout JSON discipline:** run the hook with stdout captured. If `jq` is
-   available: when the captured stdout is **empty** → emit nothing; when it is
-   **valid JSON** → emit it verbatim; otherwise → route the whole captured stdout
-   to **stderr** (diagnostics) and emit nothing (a hook that emits non-JSON to
-   stdout is always a bug under the Claude-Code/Codex hook protocol, so suppressing
-   it from stdout cannot break a correct hook). Preserve the hook's exit code.
-   When `jq` is **absent**, pass stdout through unchanged (don't break hooks on
-   minimal hosts).
+1. **Locale (UNCHANGED):** the wrapper already falls back `C.UTF-8 → C` (covering
+   `LC_ALL`/`LC_CTYPE`/`LANG`) when `C.UTF-8` is inherited but not installed —
+   keep it as-is. We do **not** extend it to unset/empty locales (no evidence the
+   Codex failure is an unset locale, and forcing `C` on an otherwise-working
+   UTF-8 default could corrupt multibyte hook output). The real #41 cause is
+   diagnostics leaking onto stdout, addressed below — the locale fallback already
+   prevents the *bash* locale warning; stdout discipline catches whatever else
+   (perl/git/jq diagnostics, shell tracing) leaks.
 
-   Note: this changes `exec bash …` to a captured invocation. Stderr passes through
-   untouched. The wrapper must not add latency beyond the hook's own runtime.
+2. **Stdout JSON discipline (the fix):** run the hook with stdout captured (stderr
+   passes through untouched; stdin still flows from host → hook). Then, when `jq`
+   is available:
+   - **empty** stdout → emit nothing.
+   - stdout is **valid JSON as a whole** → emit it verbatim.
+   - otherwise → **extract** the hook's JSON rather than suppress it: take the last
+     line beginning with `{` (`printf '%s\n' "$out" | grep -E '^\{' | tail -1`);
+     if that line is valid JSON (`jq -e .`), emit **that** on stdout and route the
+     rest (the leading warning/diagnostic prefix) to **stderr**. If no JSON line is
+     found, route the whole capture to stderr and emit nothing.
+   - This is the C1 correction: a `decision:block` JSON preceded by a locale/perl
+     warning (`warning\n{"decision":"block"}`) is **not** valid-as-a-whole, so the
+     extraction path delivers the block instead of dropping it.
+   - Preserve the hook's exit code. When `jq` is **absent**, pass stdout through
+     unchanged (don't break hooks on minimal hosts).
+   - **Trailing-newline note (I3):** capturing via `out=$(…)` strips trailing
+     newlines; re-emitting via `printf '%s\n' "$out"` restores exactly one. JSON
+     parsers accept one trailing newline — a regression case asserts this.
 
-3. **Regression test:** extend `tests/hook-contracts.sh` (or add
-   `tests/hook-stdout-discipline.sh`) with cases: (a) a hook that prints a locale
-   warning then valid JSON → wrapper emits only the JSON; (b) a hook that prints
-   only noise → wrapper stdout empty, noise on stderr, exit code preserved; (c) a
-   hook that emits valid JSON → unchanged; (d) jq-absent path → pass-through.
+3. **Regression test** (`tests/hook-stdout-discipline.sh`, runs the real
+   `run-hook.cmd` against fixture hooks): (a) warning-then-`{"decision":"block"}`
+   → wrapper emits **only** the block JSON on stdout, warning on stderr, exit code
+   preserved; (b) only-noise → stdout empty, noise on stderr; (c) clean valid JSON
+   → unchanged, exactly one trailing newline; (d) jq-absent (PATH stub) →
+   pass-through verbatim. Also run `tests/hook-contracts.sh` for no real-hook
+   regression.
 
 ### #58 — Implement-N completion trust boundary (hard-block is infeasible)
 
@@ -145,6 +177,16 @@ code-reviewer` is **not feasible**:
 - So the hook cannot reliably determine "is taskId an Implement task?" or "is the
   caller the code-reviewer?" — the two facts the block needs. A heuristic (e.g.
   block all `completed`) would break legitimate completions.
+- **Closest feasible hook approach, also rejected (m1):** a `SubagentStop` hook
+  *does* receive `transcript_path` (used by `subagent-scope-guard` /
+  `completion-claim-guard`), so it could parse the transcript for `TaskCreate`
+  calls to map `taskId → "Implement: N"` subject and flag a matching
+  `TaskUpdate(status=completed)`. Rejected as too unreliable: it only sees
+  *subagent* completions (not a lead-level `TaskUpdate`), the transcript JSONL
+  shape is not a stable API surface, and event ordering across subagents is racy.
+  It would also only *warn after the fact* (SubagentStop fires post-completion),
+  not block. So it does not deliver the asked-for enforcement and adds a fragile
+  transcript-format dependency for marginal value.
 
 **Feasible fix — shift the trust boundary (ADR 0003):** the harm in v1.1 was not
 *who flipped the bit* but that a flipped `Implement: N` was **trusted as done**
@@ -161,7 +203,34 @@ while the tree didn't compile / CI failed. So:
 - ADR 0003 records: rejected the infeasible hard-block; chose the verification
   trust-boundary; documented the hook-payload limitation so it isn't re-proposed.
 
-## Security Review
+### #61 — pr-review reminder: once per session, reset on compaction
+
+`hooks/pretool-pr-review-reminder` currently emits its `<IMPORTANT>` block on every
+`gh pr create`. Add session-dedup mirroring `hooks/session-start`'s
+`session-start-seen` precedent:
+
+- Derive a session key from `transcript_path` basename (the same key
+  `pre-compact-snapshot`/`session-start` use). Marker file:
+  `${cwd}/.claude/autodev-state/pr-reminder-seen` containing the session key(s)
+  already reminded.
+- On a matched `gh pr create`: if the current session key is already in the marker
+  → `exit 0` silently (no emit). Else → emit the reminder once and append the
+  session key to the marker.
+- **Reset on compaction:** `hooks/pre-compact-snapshot` (PreCompact) removes the
+  current session's key from `pr-reminder-seen` (or deletes the marker) so the
+  next `gh pr create` after a compaction re-emits exactly once — the
+  post-compaction context lost the earlier reminder.
+- Degrade gracefully: no `transcript_path` (hookless/identity-less host) → fall
+  back to current behavior (emit every time) rather than suppress, so a host that
+  can't dedup still gets the advice.
+- **Match precision (minor, in-scope):** tighten the trigger so it matches an
+  actual `gh pr create` invocation, not the literal substring inside a quoted
+  argument (e.g. an issue/PR *body* that mentions `gh pr create`) — anchor on a
+  word boundary / command position. (Observed: this design's own tracking-issue
+  body tripped the hook.)
+- **Regression test:** two `gh pr create` payloads with the same session key →
+  emitted once; a `pre-compact-snapshot` run between them → emitted again
+  (post-compact reset); no `transcript_path` → emits each time.
 
 - **#41** is security-adjacent: a hook that leaks non-JSON to stdout can corrupt
   the host's view of a *block* decision (e.g. a scope-guard `{"decision":"block"}`
@@ -186,6 +255,10 @@ the existing `release-tag.yml` (push to main touching `.claude-plugin/plugin.jso
   asserts stdout/stderr/exit-code — the real wrapper↔hook boundary, not a mock.
   Also run the existing `tests/hook-contracts.sh` to confirm no regression to the
   real hooks (session-start, scope-guard, completion-claim-guard, pre-compact).
+- **#61 reminder dedup:** the regression test runs the real
+  `pretool-pr-review-reminder` against two same-session `gh pr create` payloads
+  (emit once) + a `pre-compact-snapshot` between them (re-emit once) + a
+  no-`transcript_path` payload (emit each time) — the real hook↔state boundary.
 - **#59/#60/#58:** `tests/skill-content-grep.sh` (host-neutral lint) +
   `tests/skill-cross-refs.sh` pass on the edited skills; plan-phase reviewers will
   enumerate the new class because the plan-phase checklist is embedded in their
@@ -197,7 +270,8 @@ the existing `release-tag.yml` (push to main touching `.claude-plugin/plugin.jso
 |---|---|---|---|
 | A1 | All autodev hooks emit JSON-or-nothing on stdout (Claude-Code/Codex protocol) | A hook might emit intentional plain-text stdout | Verified: every registered hook emits `{…}` JSON or nothing. If a future hook needs plain-text stdout it must opt out — but none do today. |
 | A2 | The PreToolUse payload lacks task subject + caller identity | Harness could add it later | Verified against the documented hook payload; if it ever exposes both, the hard-block becomes feasible and ADR 0003 should be revisited. |
-| A3 | A `run_in_background` Bash sleep-loop genuinely blocks + re-invokes the lead once on exit | Host could change background semantics | Directly observed working across this session's many CI waits ([[feedback_ci_wait_use_bash_poll_loop]]); documented as host-described. |
+| A3 | A `run_in_background` Bash sleep-loop genuinely blocks + re-invokes the lead once on exit (Claude Code) | Codex/Cursor lack this primitive | Directly observed working across this session's many CI waits ([[feedback_ci_wait_use_bash_poll_loop]]); scoped to `<host: claude-code>`, with the self-poll fallback documented for other hosts. |
+| A6 | #41 last-JSON-line extraction recovers a block decision behind a warning | A hook could emit multi-line pretty-printed JSON (not single-line) | autodev hooks all emit single-line `jq -n` JSON (one object, one line); the `grep '^{' | tail -1` extraction matches. If a future hook pretty-prints, the whole-blob `jq .` path still handles the no-warning case; the test covers the warning-prefixed single-line case. |
 | A4 | The wrapper can capture stdout without breaking hooks that read stdin | Hooks read the harness JSON from stdin, not the wrapper | The wrapper only redirects the hook's *stdout*; stdin still flows from the host to the hook unchanged. |
 | A5 | v6.3.0 is the right bump + the tag is free | Could collide (the #804 lesson) | Verified `git ls-remote --tags` shows v6.3.0 free; current 6.2.2 → 6.3.0 minor. |
 

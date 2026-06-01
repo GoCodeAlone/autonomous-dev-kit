@@ -29,6 +29,13 @@ We investigated whether a deterministic plugin hook can enforce this. It cannot:
   "is this taskId an Implement task?" and "is the caller the code-reviewer?". The
   only deterministic option, "block all `status=completed`", would break every
   legitimate completion (spec-review, quality-review, and the orchestrator's own).
+- The closest feasible hook approach — a `SubagentStop` hook reading
+  `transcript_path` to map `taskId → "Implement: N"` (via `TaskCreate` records) and
+  flag a matching `TaskUpdate(status=completed)` — was also rejected: it fires
+  *after* completion (warn, not block), sees only subagent completions (not a
+  lead-level `TaskUpdate`), depends on the unstable transcript JSONL shape, and is
+  racy across subagents. Fragile transcript-format coupling for marginal,
+  after-the-fact value.
 
 ## Decision
 
