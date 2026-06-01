@@ -28,6 +28,15 @@ observed across autonomous runs and Codex compaction.
   reviewer reminder now emits once per session (deduped via a `.claude/autodev-state`
   marker, quote-strip-matched so a quoted `--body` mentioning `gh pr create` no longer
   trips it) and is reset by `pre-compact-snapshot` so it re-emits once after a compaction.
+- **`adversarial-design-review` — artifact-class precedent (#63):** a new design-phase row
+  that surveys how the codebase already implements an *artifact class* (where a scenario
+  stands up a server, where a fixture lives — `ls scenarios/*/cmd/server/main.go`), not
+  just the *mechanism*; grep for sibling instances and follow the established shape or
+  justify divergence.
+- **`session-start` — Linux time-dedup fix (#64):** the SessionStart hook tried BSD
+  `stat -f %m` before GNU `stat -c %Y`; on Linux `stat -f` succeeds-but-wrong (fs info),
+  so the time-based dedup never suppressed re-fires. Now GNU-first with a numeric guard —
+  fixing re-fire spam for all Linux autodev users.
 - **CI:** new `hooks-check.yml` runs the hook contract + stdout-discipline tests on any
   `hooks/`/test change, so these fixes are regression-gated.
 
