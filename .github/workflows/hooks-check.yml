@@ -11,6 +11,11 @@ on:
       - 'hooks/**'
       - 'tests/hook-contracts.sh'
       - 'tests/hook-stdout-discipline.sh'
+      - '.github/workflows/hooks-check.yml'
+
+permissions:
+  contents: read
+
 jobs:
   hooks:
     runs-on: ubuntu-latest
