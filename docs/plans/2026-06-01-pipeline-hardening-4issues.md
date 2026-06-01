@@ -191,7 +191,9 @@ pass() { printf 'PASS: %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; failures=$((failures+1)); }
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq required"; exit 0; }
 
-tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+tmp="$(mktemp -d)"
+# Cleanup trap set BEFORE any fixture is copied into hooks/ (rm -f on absent files is safe).
+trap 'rm -f "$REPO_ROOT"/hooks/fix-warn-then-json "$REPO_ROOT"/hooks/fix-noise "$REPO_ROOT"/hooks/fix-clean; rm -rf "$tmp"' EXIT
 mkfix() { printf '%s\n' "$1" > "$tmp/$2"; chmod +x "$tmp/$2"; }
 
 # Fixture A: locale warning to stderr-or-stdout then a block JSON on stdout.
@@ -212,31 +214,42 @@ run() { local out err rc; out="$("$WRAPPER" "$1" 2>"$tmp/err")"; rc=$?; printf '
 # Simplest: call the wrapper with HOOK_DIR override is not supported, so copy fixtures
 # into hooks/ under a unique prefix and clean up.
 for f in fix-warn-then-json fix-noise fix-clean; do cp "$tmp/$f" "$REPO_ROOT/hooks/$f"; done
-trap 'rm -f "$REPO_ROOT"/hooks/fix-warn-then-json "$REPO_ROOT"/hooks/fix-noise "$REPO_ROOT"/hooks/fix-clean; rm -rf "$tmp"' EXIT
 
-# (a) warning + block JSON → stdout is ONLY the block JSON, valid, warning on stderr.
+# (a) warning + block JSON → stdout is ONLY the block JSON; warning ON stderr (m1).
 run fix-warn-then-json
 if printf '%s' "$OUT" | jq -e '.decision=="block"' >/dev/null 2>&1 \
-   && ! printf '%s' "$OUT" | grep -q 'perl: warning'; then
-  pass "(a) block JSON delivered, warning stripped from stdout"
-else fail "(a) expected only block JSON on stdout, got: $OUT"; fi
+   && ! printf '%s' "$OUT" | grep -q 'perl: warning' \
+   && printf '%s' "$ERR" | grep -q 'perl: warning'; then
+  pass "(a) block JSON on stdout, warning routed to stderr"
+else fail "(a) expected block JSON on stdout + warning on stderr, got OUT=[$OUT] ERR=[$ERR]"; fi
 
-# (b) only noise → stdout empty.
+# (b) only noise → stdout empty, noise on stderr.
 run fix-noise
-[ -z "$OUT" ] && pass "(b) noise suppressed from stdout" || fail "(b) expected empty stdout, got: $OUT"
+{ [ -z "$OUT" ] && printf '%s' "$ERR" | grep -q 'diagnostic'; } \
+  && pass "(b) noise suppressed from stdout, routed to stderr" || fail "(b) expected empty stdout, got: $OUT"
 
 # (c) clean JSON → unchanged + valid.
 run fix-clean
 printf '%s' "$OUT" | jq -e '.hookSpecificOutput.hookEventName=="X"' >/dev/null 2>&1 \
   && pass "(c) clean JSON passthrough" || fail "(c) clean JSON broke, got: $OUT"
 
+# (d) jq-absent (I2) → wrapper passes stdout through VERBATIM (warning + JSON both present).
+# Stub PATH so the wrapper's `command -v jq` fails; assert via grep (no jq needed here).
+nojq="$tmp/nojq"; mkdir -p "$nojq"
+OUTD="$(PATH="$nojq" "$WRAPPER" fix-warn-then-json 2>/dev/null)"
+{ printf '%s' "$OUTD" | grep -q 'perl: warning' && printf '%s' "$OUTD" | grep -q '"decision":"block"'; } \
+  && pass "(d) jq-absent → verbatim passthrough (no discipline applied)" \
+  || fail "(d) expected verbatim passthrough with jq absent, got: $OUTD"
+
 echo ""; echo "Results: $failures failure(s)"; [ "$failures" -eq 0 ]
 ```
 
-> Implementation note: the fixtures are copied into `hooks/` (the wrapper resolves
-> scripts relative to its own dir) and cleaned up in the trap. The jq-absent path is
-> covered by the early `command -v jq` SKIP (the wrapper's own jq-absent branch is
-> exercised manually in the design's case (d); a PATH-stub case may be added).
+> Implementation note: fixtures are copied into `hooks/` (the wrapper resolves
+> scripts relative to its own dir) and cleaned up in the trap (set BEFORE the copy so
+> a mid-test failure still cleans up). The top `command -v jq` guard SKIPs only when
+> the **test machine** has no jq (can't run a/b/c); on CI (jq present) all four cases
+> run — case (d) stubs PATH so the **wrapper** sees no jq and asserts verbatim
+> passthrough via grep (no jq needed for that assertion).
 
 **Step 2: Run → FAIL** (wrapper still `exec bash`, doesn't strip the warning):
 Run: `bash tests/hook-stdout-discipline.sh 2>&1 | tail -6`
@@ -296,6 +309,7 @@ Rollback: revert `run-hook.cmd` to the `exec bash` form + re-run `tests/hook-con
 ```bash
 test_pr_reminder_dedup() {
   local tmp; tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN                       # I3: repo-convention cleanup
   local sess='/x/transcripts/sess-abc.jsonl'
   local payload='{"tool_name":"Bash","tool_input":{"command":"gh pr create --title t --body b"},"cwd":"'"$tmp"'","transcript_path":"'"$sess"'"}'
   # first call emits
@@ -312,18 +326,35 @@ test_pr_reminder_dedup() {
   printf '%s' "$out3" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1 \
     && pass "pr-reminder: re-emits after PreCompact reset" \
     || fail "pr-reminder: should re-emit after compaction, got: $out3"
-  rm -rf "$tmp"
+  # I1: a quoted body that merely mentions 'gh pr create' must NOT emit
+  local fp='{"tool_name":"Bash","tool_input":{"command":"gh issue create --title t --body \"see gh pr create docs\""},"cwd":"'"$tmp"'","transcript_path":"'"$sess"'"}'
+  local outfp; outfp="$(run_hook pretool-pr-review-reminder "$fp")"
+  [ -z "$outfp" ] && pass "pr-reminder: not tripped by 'gh pr create' inside a quoted body" \
+    || fail "pr-reminder: false-positive on quoted body, got: $outfp"
+  # degrade gracefully: no transcript_path → emits every time (no marker write)
+  local tmp2; tmp2="$(mktemp -d)"
+  local np='{"tool_name":"Bash","tool_input":{"command":"gh pr create --title t"},"cwd":"'"$tmp2"'"}'
+  local na; na="$(run_hook pretool-pr-review-reminder "$np")"
+  local nb; nb="$(run_hook pretool-pr-review-reminder "$np")"
+  { printf '%s' "$na" | jq -e '.hookSpecificOutput' >/dev/null 2>&1 && printf '%s' "$nb" | jq -e '.hookSpecificOutput' >/dev/null 2>&1; } \
+    && pass "pr-reminder: no transcript_path → emits every time" \
+    || fail "pr-reminder: should emit each time without transcript_path"
+  rm -rf "$tmp2"
 }
 # (call test_pr_reminder_dedup in the main run sequence)
 ```
-Also: a no-`transcript_path` payload still emits each time (degrade gracefully).
 
 **Step 2: Run → FAIL** (reminder has no dedup yet):
 Run: `bash tests/hook-contracts.sh 2>&1 | grep -i "pr-reminder" | head`
 Expected: the "deduped within session" case FAILs (second call still emits).
 
 **Step 3: Implement dedup in `pretool-pr-review-reminder`** — after computing `cmd` and confirming `gh pr create`, before emitting:
-- Tighten the match: `printf '%s' "$cmd" | grep -Eq '(^|[;&| ])gh +pr +create([ ]|$)'` (command position, not substring inside a quoted body).
+- **Tighten the match via quote-stripping (I1 — mirror `pre-tool-scope-guard`'s precedent), NOT a boundary regex.** A boundary regex still matches `gh pr create` inside a quoted `--body`. Strip quoted segments first, then match on the stripped command:
+  ```bash
+  cmd_unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+  printf '%s' "$cmd_unquoted" | grep -q 'gh pr create' || exit 0
+  ```
+  So `gh issue create --body "… gh pr create …"` → stripped → `gh issue create --body ` → no match → no emit; a real `gh pr create --title t --body b` → stripped → `gh pr create --title t --body ` → matches.
 - Compute `session_key`: `transcript_path=$(… jq -r .transcript_path …); session_key=""; [ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")`.
 - Marker: `marker="${cwd_dir}/.claude/autodev-state/pr-reminder-seen"`.
 - If `[ -n "$session_key" ]` and `grep -qxF "$session_key" "$marker" 2>/dev/null` → `exit 0` (already reminded). Else emit, and if `[ -n "$session_key" ]` append: `mkdir -p "$(dirname "$marker")"; printf '%s\n' "$session_key" >> "$marker"`.
