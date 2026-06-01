@@ -2,7 +2,7 @@
 
 ## v6.3.0 — 2026-06-01
 
-Pipeline-hardening release closing five recurring gate-miss / context-waste issues
+Pipeline-hardening release closing seven recurring gate-miss / context-waste issues
 observed across autonomous runs and Codex compaction.
 
 - **`adversarial-design-review` — auth/authz chain-composition bug-class (#59):** a new
