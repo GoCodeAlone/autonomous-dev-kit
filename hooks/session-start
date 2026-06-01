@@ -81,9 +81,13 @@ LAST_EMIT_FILE="${STATE_DIR}/session-start-last-emit"
 DEDUP_WINDOW_SEC=5
 if [ -f "$LAST_EMIT_FILE" ]; then
     now=$(date +%s 2>/dev/null || echo 0)
-    last=$(stat -f %m "$LAST_EMIT_FILE" 2>/dev/null \
-        || stat -c %Y "$LAST_EMIT_FILE" 2>/dev/null \
+    # GNU stat (-c %Y) first, then BSD (-f %m). BSD-first is wrong on Linux: `stat -f`
+    # means "file system status" there, succeeds (exit 0), and prints fs info instead
+    # of the mtime — breaking the numeric comparison and the dedup (#64).
+    last=$(stat -c %Y "$LAST_EMIT_FILE" 2>/dev/null \
+        || stat -f %m "$LAST_EMIT_FILE" 2>/dev/null \
         || echo 0)
+    case "$last" in (*[!0-9]*|'') last=0 ;; esac   # guard: only a clean integer
     if [ "$now" -gt 0 ] && [ "$last" -gt 0 ] && [ $((now - last)) -lt "$DEDUP_WINDOW_SEC" ]; then
         exit 0
     fi
