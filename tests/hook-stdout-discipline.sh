@@ -10,7 +10,7 @@ command -v jq >/dev/null 2>&1 || { echo "SKIP: jq required for a/b/c"; exit 0; }
 
 tmp="$(mktemp -d)"
 # Cleanup trap set BEFORE any fixture is copied into hooks/ (rm -f on absent files is safe).
-trap 'rm -f "$REPO_ROOT"/hooks/fix-warn-then-json "$REPO_ROOT"/hooks/fix-noise "$REPO_ROOT"/hooks/fix-clean; rm -rf "$tmp"' EXIT
+trap 'rm -f "$REPO_ROOT"/hooks/fix-warn-then-json "$REPO_ROOT"/hooks/fix-noise "$REPO_ROOT"/hooks/fix-clean "$REPO_ROOT"/hooks/fix-empty; rm -rf "$tmp"' EXIT
 mkfix() { printf '%s\n' "$1" > "$tmp/$2"; chmod +x "$tmp/$2"; }
 
 # Fixture A: a warning leaks to stdout, then a block JSON on stdout.
@@ -23,8 +23,11 @@ echo "just a diagnostic line"' fix-noise
 # Fixture C: clean single-line JSON.
 mkfix '#!/usr/bin/env bash
 printf "%s\n" "{\"hookSpecificOutput\":{\"hookEventName\":\"X\"}}"' fix-clean
+# Fixture E: emits NOTHING at all (#66) — wrapper must emit a `{}` no-op, not empty.
+mkfix '#!/usr/bin/env bash
+exit 0' fix-empty
 
-for f in fix-warn-then-json fix-noise fix-clean; do cp "$tmp/$f" "$REPO_ROOT/hooks/$f"; done
+for f in fix-warn-then-json fix-noise fix-clean fix-empty; do cp "$tmp/$f" "$REPO_ROOT/hooks/$f"; done
 
 run() { OUT="$("$WRAPPER" "$1" 2>"$tmp/err")"; RC=$?; ERR="$(cat "$tmp/err")"; }
 
@@ -57,5 +60,11 @@ OUTD="$(PATH="$nojq" "$WRAPPER" fix-warn-then-json 2>/dev/null)"
 { printf '%s' "$OUTD" | grep -q 'perl: warning' && printf '%s' "$OUTD" | grep -q '"decision":"block"'; } \
   && pass "(d) jq-absent → verbatim passthrough (no discipline applied)" \
   || fail "(d) expected verbatim passthrough with jq absent, got: $OUTD"
+
+# (e) empty hook output (#66) → wrapper emits a `{}` no-op (valid JSON), not empty.
+run fix-empty
+printf '%s' "$OUT" | jq -e '. == {}' >/dev/null 2>&1 \
+  && pass "(e) empty hook output → wrapper emits {} no-op (valid JSON)" \
+  || fail "(e) expected {} for empty hook output, got: [$OUT]"
 
 echo ""; echo "Results: $failures failure(s)"; [ "$failures" -eq 0 ]

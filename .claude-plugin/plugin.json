@@ -1,7 +1,7 @@
 {
   "name": "autodev",
   "description": "Autonomous development workflow skills for coding agents: design, review, planning, execution, monitoring, and retrospectives",
-  "version": "6.3.0",
+  "version": "6.3.1",
   "author": {
     "name": "Jon Langevin",
     "email": "jon@gocodealone.com"
