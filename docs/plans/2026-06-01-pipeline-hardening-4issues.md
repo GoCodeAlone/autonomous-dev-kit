@@ -351,7 +351,7 @@ Expected: the "deduped within session" case FAILs (second call still emits).
 **Step 3: Implement dedup in `pretool-pr-review-reminder`** — after computing `cmd` and confirming `gh pr create`, before emitting:
 - **Tighten the match via quote-stripping (I1 — mirror `pre-tool-scope-guard`'s precedent), NOT a boundary regex.** A boundary regex still matches `gh pr create` inside a quoted `--body`. Strip quoted segments first, then match on the stripped command:
   ```bash
-  cmd_unquoted=$(printf '%s' "$cmd" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
+  cmd_unquoted=$(printf '%s' "$cmd" | sed "s/\"[^\"]*\"//g; s/'[^']*'//g")  # double-first, matching pre-tool-scope-guard
   printf '%s' "$cmd_unquoted" | grep -q 'gh pr create' || exit 0
   ```
   So `gh issue create --body "… gh pr create …"` → stripped → `gh issue create --body ` → no match → no emit; a real `gh pr create --title t --body b` → stripped → `gh pr create --title t --body ` → matches.
