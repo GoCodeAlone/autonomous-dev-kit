@@ -31,7 +31,7 @@
 |------|-------|-------|--------|
 | 1 | feat: v6.3.0 pipeline hardening — auth/authz bug-class, pr-monitoring pattern, completion trust-boundary, hook stdout-JSON discipline, reminder dedup (#41/#58/#59/#60/#61) | Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7 | feat/pipeline-hardening-4issues-v6.3.0 |
 
-**Status:** Draft
+**Status:** Locked 2026-06-01T05:35:54Z
 
 ---
 
