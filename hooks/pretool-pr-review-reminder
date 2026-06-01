@@ -26,8 +26,23 @@ tool_name=$(printf '%s' "$hook_input" | jq -r '.tool_name // empty' 2>/dev/null 
 cmd=$(printf '%s' "$hook_input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
 [ -z "$cmd" ] && exit 0
 
-# Only act on PR creation commands.
-printf '%s' "$cmd" | grep -q 'gh pr create' || exit 0
+# Only act on real PR-creation commands. Strip quoted segments first so a quoted
+# --body that merely mentions "gh pr create" does not trip the hook (#61; mirrors
+# pre-tool-scope-guard's quote-strip precedent).
+cmd_unquoted=$(printf '%s' "$cmd" | sed "s/\"[^\"]*\"//g; s/'[^']*'//g")
+printf '%s' "$cmd_unquoted" | grep -q 'gh pr create' || exit 0
+
+# Session dedup (#61): emit once per session; reset by pre-compact-snapshot on
+# compaction. Keyed by transcript basename; degrade to emit-every-time when absent.
+cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
+[ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+session_key=""
+[ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
+marker="${cwd_dir}/.claude/autodev-state/pr-reminder-seen"
+if [ -n "$session_key" ] && grep -qxF "$session_key" "$marker" 2>/dev/null; then
+    exit 0   # already reminded this session
+fi
 
 reminder=$(cat <<'REMINDER'
 <IMPORTANT>
@@ -51,5 +66,11 @@ emit_additional_context() {
 }
 
 emit_additional_context "PreToolUse" "$reminder"
+
+# Record this session so the reminder doesn't repeat (only when we have a session key).
+if [ -n "$session_key" ]; then
+    mkdir -p "$(dirname "$marker")" 2>/dev/null || true
+    printf '%s\n' "$session_key" >> "$marker" 2>/dev/null || true
+fi
 
 exit 0

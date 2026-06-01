@@ -419,6 +419,38 @@ test_pretool_pr_review_json() {
   assert_hook_context_json "pretool-pr-review-reminder" "PreToolUse" "$output"
 }
 
+test_pr_reminder_dedup() {
+  local tmp; tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  local sess='/x/transcripts/sess-abc.jsonl'
+  local payload='{"tool_name":"Bash","tool_input":{"command":"gh pr create --title t --body b"},"cwd":"'"$tmp"'","transcript_path":"'"$sess"'"}'
+  local out1; out1="$(run_hook pretool-pr-review-reminder "$payload")"
+  printf '%s' "$out1" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1 \
+    && pass "pr-reminder: first call emits" || fail "pr-reminder: first call should emit"
+  local out2; out2="$(run_hook pretool-pr-review-reminder "$payload")"
+  [ -z "$out2" ] && pass "pr-reminder: deduped within session" \
+    || fail "pr-reminder: second call should be silent, got: $out2"
+  # PreCompact with NO locked plans must still clear the marker.
+  run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'","transcript_path":"'"$sess"'"}' >/dev/null 2>&1 || true
+  local out3; out3="$(run_hook pretool-pr-review-reminder "$payload")"
+  printf '%s' "$out3" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1 \
+    && pass "pr-reminder: re-emits after PreCompact reset" \
+    || fail "pr-reminder: should re-emit after compaction, got: $out3"
+  # A quoted body that merely mentions 'gh pr create' must NOT emit.
+  local fp='{"tool_name":"Bash","tool_input":{"command":"gh issue create --title t --body \"see gh pr create docs\""},"cwd":"'"$tmp"'","transcript_path":"'"$sess"'"}'
+  local outfp; outfp="$(run_hook pretool-pr-review-reminder "$fp")"
+  [ -z "$outfp" ] && pass "pr-reminder: not tripped by 'gh pr create' inside a quoted body" \
+    || fail "pr-reminder: false-positive on quoted body, got: $outfp"
+  # Degrade gracefully: no transcript_path -> emits every time.
+  local tmp2; tmp2="$(mktemp -d)"
+  local np='{"tool_name":"Bash","tool_input":{"command":"gh pr create --title t"},"cwd":"'"$tmp2"'"}'
+  local na nb; na="$(run_hook pretool-pr-review-reminder "$np")"; nb="$(run_hook pretool-pr-review-reminder "$np")"
+  { printf '%s' "$na" | jq -e '.hookSpecificOutput' >/dev/null 2>&1 && printf '%s' "$nb" | jq -e '.hookSpecificOutput' >/dev/null 2>&1; } \
+    && pass "pr-reminder: no transcript_path -> emits every time" \
+    || fail "pr-reminder: should emit each time without transcript_path"
+  rm -rf "$tmp2"
+}
+
 test_posttool_pr_created_json() {
   local output
   output="$(run_hook posttool-pr-created '{"tool_name":"Bash","tool_input":{"command":"gh pr create --title test --body test"},"tool_response":"https://github.com/owner/repo/pull/123","cwd":"'"$REPO_ROOT"'"}')"
@@ -1778,6 +1810,7 @@ test_prompt_strict_ignores_single_workspace_lock_when_session_has_no_lock
 test_prompt_strict_uses_session_locked_plan_only
 test_prompt_strict_ignores_prose_mention_of_locked_status
 test_pretool_pr_review_json
+test_pr_reminder_dedup
 test_posttool_pr_created_json
 test_pre_compact_snapshot_json
 test_wrapper_suppresses_pre_compact_locale_noise

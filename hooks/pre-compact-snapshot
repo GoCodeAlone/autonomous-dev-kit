@@ -29,6 +29,23 @@ transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 
 session_key=""
 [ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
 
+# ── #61: clear this session's pr-review-reminder marker ───────────────────────
+# So the reminder re-emits once after compaction (the post-compaction context lost the
+# earlier reminder). MUST run before the no-locked-plans early-exit below. Guard on a
+# non-empty session key (no blanket file wipe on identity-less hosts).
+if [ -n "${session_key:-}" ]; then
+    reminder_marker="${cwd_dir}/.claude/autodev-state/pr-reminder-seen"
+    if [ -f "$reminder_marker" ]; then
+        # grep -v exits 1 when no lines remain (only our key) — tolerate it under set -e.
+        remaining="$(grep -vxF "$session_key" "$reminder_marker" 2>/dev/null || true)"
+        if [ -n "$remaining" ]; then
+            printf '%s\n' "$remaining" > "$reminder_marker"   # keep other sessions' keys
+        else
+            rm -f "$reminder_marker"                          # only our key → remove marker
+        fi
+    fi
+fi
+
 # ── Find locked plans and collect their state ─────────────────────────────────
 plans_dir="${cwd_dir}/docs/plans"
 state_section=""
