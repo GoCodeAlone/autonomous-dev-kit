@@ -31,7 +31,7 @@
 |------|-------|-------|--------|
 | 1 | feat: v6.3.0 pipeline hardening (#41/#58/#59/#60/#61/#63/#64) | Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7, Task 8, Task 9 | feat/pipeline-hardening-4issues-v6.3.0 |
 
-**Status:** Amended 2026-06-01T06:00:00Z (user-approved scope expansion to #63 + #64; see Amendment note + decisions/0004)
+**Status:** Complete 2026-06-01T06:08:10Z (v6.3.0 released; 7 issues; see docs/retros/2026-06-01-v6.3.0-pipeline-hardening-retro.md)
 
 ---
 
