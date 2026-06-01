@@ -4,6 +4,7 @@
 **Date:** 2026-06-01
 **Issue:** #66 (regression/uncovered-path of #41)
 **Type:** Bug fix (systematic-debugging root-caused)
+**Adversarial review:** design cycle 1 = FAIL (0C/2I/3m) → resolved this revision (I1 test-inventory + I2 jq-present scoping + m1 schema-vs-syntax + m2 TTY + m3 test-(b) note).
 
 ## Root cause
 
@@ -34,10 +35,38 @@ the Claude wrapper path", "the installed hook the way Codex invokes it"):
 1. **`hooks/pre-compact-snapshot`** — replace each empty `exit 0` (lines 18/20/21/24/132)
    with `printf '{}\n'; exit 0` (via a `noop_json` helper; `printf` needs no jq, so the
    no-jq path is covered). The content path (line ~163, after `emit_additional_context`)
-   is unchanged. Covers **direct invocation** (Codex bypassing the wrapper).
+   is unchanged. Covers **direct invocation** (Codex bypassing the wrapper). (Line 20 is the
+   TTY guard — an interactive-only path no host triggers with TTY stdin; adding `noop_json`
+   there is harmless, m2.)
 2. **`hooks/run-hook.cmd`** — the empty-hook-output branch emits `{}` instead of nothing.
-   Covers **all hooks** on the wrapper path (a hook that legitimately emits empty now
-   yields `{}` to the host). Safe no-op on Claude Code for every event type.
+   Covers all hooks on the wrapper path **when jq is present** (the jq-absent branch is a
+   verbatim `exec bash` passthrough — that path is covered for pre-compact-snapshot only,
+   by its own `printf`-based fix; I2). Safe no-op on Claude Code for every event type.
+
+## Tests requiring update (I1 — these existing tests assert empty output)
+
+Three existing `hook-contracts.sh` tests run pre-compact-snapshot on a *no-snapshot*
+scenario and assert `[ -n "$output" ]` is empty; after the fix `output="{}"`, so they must
+change to "no *populated* snapshot" rather than "empty string":
+- `test_scope_lock_complete*` (~line 654): completed (not locked) plan → no snapshot.
+- `pre_compact_ignores_prose_mention_of_locked_status` (~line 1182): draft plan → no snapshot.
+- `pre_compact_ignores_single_workspace_lock_when_session_has_no_lock` (~line 1279).
+
+New assertion (robust to both old-empty and new-`{}`): **fail only if the output contains a
+populated snapshot** —
+```bash
+if printf '%s' "$output" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+  fail "... expected no lock snapshot, got a populated one: $output"
+fi
+```
+(`jq -e .hookSpecificOutput.additionalContext` is false for both `{}` and empty, true only
+for a real snapshot.) The existing with-locked-plan test (asserts the populated
+`hookSpecificOutput`) is unchanged.
+
+`tests/hook-stdout-discipline.sh` test (b) (noise-only fixture) is **unaffected** (noise
+routes via the wrapper's `else` branch, not the empty branch, so stdout stays empty there);
+the new wrapper test is a **distinct case (e): a fixture that emits nothing at all → wrapper
+emits `{}`**.
 
 ## Tests (the regression #66 explicitly requests)
 
@@ -77,7 +106,7 @@ runs the **real** `run-hook.cmd` against an empty-output fixture.
 
 | id | assumption | challenge | fallback |
 |---|---|---|---|
-| A1 | Codex rejects empty PreCompact stdout but accepts a valid JSON object | Could reject `{}` specifically if it enforces a strict schema | `{}` is the minimal valid object; if Codex needs specific fields, that requires Codex-side repro (documented limitation — I cannot run Codex). Emitting valid JSON is strictly better than empty regardless. |
+| A1 | Codex rejects empty PreCompact stdout but accepts a valid JSON object | Could reject `{}` specifically if it enforces a strict typed schema | `{}` is the minimal valid object; if Codex needs specific fields, that requires Codex-side repro (documented limitation — I cannot run Codex). Emitting valid JSON is strictly better than empty. **`{}` solves only the "not valid JSON" rejection class — NOT a "wrong schema shape" rejection.** If Codex enforces a typed PreCompact schema that rejects unknown objects, a *different* error will surface; the issue-close note must capture this distinction so the next investigator isn't misled (m1). |
 | A2 | `{}` is a no-op for every Claude Code hook event | Some event might warn on `{}` | All events treat `{}` as "no directives"; the existing with-content tests confirm no regression to the populated path. |
 | A3 | Codex invokes the installed hook (direct and/or via wrapper) | Unknown exact path | Fixed at BOTH layers so either path emits valid JSON. |
 
