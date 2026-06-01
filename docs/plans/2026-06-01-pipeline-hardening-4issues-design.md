@@ -4,7 +4,7 @@
 **Date:** 2026-06-01
 **Issues:** #41, #58, #59, #60, #61 (GoCodeAlone/autonomous-dev-kit)
 **ADR:** decisions/0003-implement-n-completion-trust-boundary.md (#58)
-**Adversarial review:** design cycle 1 = FAIL (1C/3I/3m) → all resolved this revision; #61 added (user-reported same session).
+**Adversarial review:** cycle 1 = FAIL (1C/3I/3m, all resolved); #61 added (user-reported same session). cycle 2 = FAIL (1 new Important: pre-compact-snapshot early-exit would skip the #61 marker-clear → fixed: clear placed unconditionally before the early-exit) → resolved this revision.
 
 ## Problem
 
@@ -209,17 +209,25 @@ while the tree didn't compile / CI failed. So:
 `gh pr create`. Add session-dedup mirroring `hooks/session-start`'s
 `session-start-seen` precedent:
 
-- Derive a session key from `transcript_path` basename (the same key
-  `pre-compact-snapshot`/`session-start` use). Marker file:
-  `${cwd}/.claude/autodev-state/pr-reminder-seen` containing the session key(s)
-  already reminded.
+- Derive a session key from `transcript_path` basename — the same value
+  `pre-compact-snapshot` already computes as `session_key` for session-locks
+  attribution (note: this is *not* `session-start`'s primary dedup key, which is
+  `session_id:source_kind`; basename is a sufficient, stable per-session key for a
+  file marker). Marker file: `${cwd}/.claude/autodev-state/pr-reminder-seen`
+  containing the session key(s) already reminded.
 - On a matched `gh pr create`: if the current session key is already in the marker
   → `exit 0` silently (no emit). Else → emit the reminder once and append the
   session key to the marker.
-- **Reset on compaction:** `hooks/pre-compact-snapshot` (PreCompact) removes the
-  current session's key from `pr-reminder-seen` (or deletes the marker) so the
-  next `gh pr create` after a compaction re-emits exactly once — the
-  post-compaction context lost the earlier reminder.
+- **Reset on compaction (I-NEW-1 — placement is load-bearing):**
+  `hooks/pre-compact-snapshot` removes the current session's key from
+  `pr-reminder-seen` so the next `gh pr create` after a compaction re-emits once.
+  This clear MUST be placed **unconditionally near the top of pre-compact-snapshot
+  — immediately after `session_key`/`cwd_dir` are computed (≈ line 30) and BEFORE
+  the `[ -z "$state_section" ] && exit 0` no-locked-plans early-exit**. Co-locating
+  it with the emit block (after the early-exit) would silently skip the clear in
+  the common no-locked-plan case, leaving the reminder permanently silenced after
+  the first PR. The regression test asserts the clear fires even when there are no
+  locked plans.
 - Degrade gracefully: no `transcript_path` (hookless/identity-less host) → fall
   back to current behavior (emit every time) rather than suppress, so a host that
   can't dedup still gets the advice.
@@ -229,8 +237,9 @@ while the tree didn't compile / CI failed. So:
   word boundary / command position. (Observed: this design's own tracking-issue
   body tripped the hook.)
 - **Regression test:** two `gh pr create` payloads with the same session key →
-  emitted once; a `pre-compact-snapshot` run between them → emitted again
-  (post-compact reset); no `transcript_path` → emits each time.
+  emitted once; a `pre-compact-snapshot` run between them **with no locked plans
+  present** (the early-exit case) → still clears the marker so the reminder is
+  emitted again (post-compact reset); no `transcript_path` → emits each time.
 
 - **#41** is security-adjacent: a hook that leaks non-JSON to stdout can corrupt
   the host's view of a *block* decision (e.g. a scope-guard `{"decision":"block"}`
