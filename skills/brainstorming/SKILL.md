@@ -155,6 +155,7 @@ When the user wants design exploration without execution, they pass `--design-on
 ## After the Design
 
 **Documentation:**
+- Committed artifacts use repo-relative paths; illustrate machine paths only with `<placeholder>` segments (e.g. `/Users/<name>/…`); never a literal operator-home path. Enforced by `tests/no-machine-paths.sh`.
 - Write the validated design to `docs/plans/YYYY-MM-DD-<topic>-design.md`
 - Include explicit `## Global Design Guidance`, `## Security Review`, `## Infrastructure Impact`, `## Multi-Component Validation`, `## Assumptions`, and `## Rollback` sections (rollback only required for change classes that affect runtime — see the trigger list in `runtime-launch-validation` / `finishing-a-development-branch` Step 1b)
 - Use elements-of-style:writing-clearly-and-concisely skill if available

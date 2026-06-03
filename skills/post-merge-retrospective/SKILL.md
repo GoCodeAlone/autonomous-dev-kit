@@ -67,6 +67,7 @@ If the PR was opened ad-hoc (no design / plan in `docs/plans/`), this skill exit
 
 7. **Write the retro.**
    Save to `docs/retros/YYYY-MM-DD-<feature>-retro.md` using the format below. Commit it.
+   Committed artifacts use repo-relative paths; illustrate machine paths only with `<placeholder>` segments (e.g. `/Users/<name>/…`); never a literal operator-home path. Enforced by `tests/no-machine-paths.sh`.
 
 ## Retro format
 
