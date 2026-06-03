@@ -50,7 +50,7 @@ If the PR was opened ad-hoc (no design / plan in `docs/plans/`), this skill exit
    For each unique CI failure on the branch, ask: was this caught by `verification-before-completion` / `runtime-launch-validation` / something else, or did it slip past every local gate? Slips are gate misses too.
 
 5. **Score skill activations.**
-   **Primary source: `.claude/autodev-state/in-progress.jsonl`** (written by the `record-activity` PostToolUse hook in any repo — not kit-dev-only). Read phase from the `args` field of `ev:"skill"` entries (the lead's `Skill` invocation carries `args:"--phase=design|plan …"`); the Agent-dispatched reviewer subagent is a separate `ev:"agent"` record without a phase and is ignored for phase attribution. If the jsonl is absent → emit "activation log unavailable" rows, never "script does not exist". `tests/skill-activation-audit.sh` (kit-dev convenience; absent in consumer repos) may be used to cross-check in the kit repo itself — it reports each skill once, so cross-check phase counts against the jsonl's `args=--phase=<design|plan>` entries when both phases are required.
+   **Primary source: `.claude/autodev-state/in-progress.jsonl`** (written by the `record-activity` PostToolUse hook in any repo — not kit-dev-only). The activation log lives at the **canonical repo root** (`git rev-parse --git-common-dir`'s parent — shared across worktrees, survives worktree cleanup); if the pipeline ran from a worktree checkout the log is written there, not in the worktree directory. When reading from a worktree checkout, resolve the canonical root (`cd <worktree> && git rev-parse --git-common-dir` → `../`) before reading the log. This closes the v6.4.0 retro's #70 residual. Read phase from the `args` field of `ev:"skill"` entries (the lead's `Skill` invocation carries `args:"--phase=design|plan …"`); the Agent-dispatched reviewer subagent is a separate `ev:"agent"` record without a phase and is ignored for phase attribution. If the jsonl is absent → emit "activation log unavailable" rows, never "script does not exist". `tests/skill-activation-audit.sh` (kit-dev convenience; absent in consumer repos) may be used to cross-check in the kit repo itself — it reports each skill once, so cross-check phase counts against the jsonl's `args=--phase=<design|plan>` entries when both phases are required.
    Verify the expected pipeline ran. The canonical chain documented in `skills/using-autodev/SKILL.md` is:
    `brainstorming → adversarial-design-review (design) → writing-plans → adversarial-design-review (plan) → alignment-check → subagent-driven-development → finishing-a-development-branch → pr-monitoring → post-merge-retrospective`.
    For each gate that was *expected* to fire and didn't, that's a missed-activation.
@@ -160,7 +160,7 @@ The retro is intentionally short. Long retros don't get read. The format above f
 - `docs/plans/` (design, plan, adversarial-review reports — reports now committed by `adversarial-design-review` per the deterministic path rule)
 - `decisions/` (ADRs cited from the design / plan)
 - `gh pr view`, `gh pr review-comments`, `gh run list`
-- `.claude/autodev-state/in-progress.jsonl` (if present)
+- `.claude/autodev-state/in-progress.jsonl` (if present — at the **canonical repo root**, i.e. `git-common-dir`'s parent; resolve from the worktree if reading from one)
 - `tests/skill-activation-audit.sh` (kit-dev convenience; absent in consumer repos)
 - `docs/design-guidance.md` or equivalent project guidance, if present
 
