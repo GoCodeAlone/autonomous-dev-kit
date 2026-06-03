@@ -43,3 +43,15 @@
 3. **Give Step 1e an output token** — taken (D6): visible PR-body `Doc-reconciliation:` line instead of a scanner.
 
 **Verdict reasoning:** Two Criticals (false "never written" premise + naming divergence; incomplete retro fix leaving the broken template line) plus four Importants are all addressed in the revised design without adding a skill or a scanner. The revision adopts the repo's own convention, completes the retro fix, de-risks the Step 1e trap with a visible token, and reframes the only YAGNI surface (`Resolution`) to have a consumer. Re-run after revision to confirm convergence.
+
+## Cycle 2 (re-run) — all cycle-1 resolved; revision introduced new issues, now fixed
+
+| id | sev | class | issue | resolution |
+|---|---|---|---|---|
+| N1 | Critical | Multi-component / Assumptions | Stem-derivation rule ambiguous for plan files (`<slug>.md` has no `-design` tail to strip) → an agent could derive a wrong `-plan-review.md` path, silently breaking the load-bearing D1↔D2 path contract. | Replaced prose with a deterministic one-rule: drop `.md`; design→`+-review.md`, plan→`+-plan-review.md`, with both a design and a plan worked example. Both D1 and D2 state the identical rule. |
+| N2 | Important | Missing failure mode | Step 1e added to skill body but NOT to `finishing-a-development-branch`'s Autonomous Mode numbered list (the real control flow) → never fires in autonomous runs (deeper self-pass than D6). | D3 now names **two** edit sites: the `### Step 1e` body + a new bullet in the Autonomous Mode list after the Step 1d item. |
+| N3 | Important | Trap | `Doc-reconciliation:` PR-body token claimed retro-visible, but no retro step consumed it → aspirational, soft self-pass. | D2 wires retro Step 5 (Missed activations) to record `finishing Step 1e` fired iff the token is present when the diff touched docs — real consumer, reuses existing table. |
+| N4 | Minor | Existence | `**Reads:**` is two lines; demoting "the bullet" could remove the correct jsonl line. | D2 scalpel note: keep line 159 (jsonl), demote only the `skill-activation-audit.sh` line. |
+| N5 | Minor | YAGNI | Step 1e trigger "README/reference doc" broader than motivating issues. | Trigger reworded to "describes the feature's behavior"; docs with no `docs/plans/` counterpart trivially pass — cheap no-op. |
+
+**Cycle-2 verdict:** all 10 cycle-1 findings verified resolved in design text; the 1 Critical + 2 Important + 2 Minor introduced by the revision are now fixed (deterministic stem rule, dual edit-site for Step 1e, wired token consumer, scalpel Reads edit, trigger reword). No skill added, no scanner, no net bloat beyond ~+20 lines to adversarial-design-review and ~+14 to finishing. Cycle 3 re-run to confirm convergence.

@@ -65,13 +65,19 @@ Four issues, two themes, one root: the pipeline emits design/plan/review artifac
 ### D1 — Committed adversarial-review report (#69, G1)
 
 `adversarial-design-review` step 7 + Dispatch + Report-format change:
-- After producing the report, **write it to the repo's existing convention path**
-  `docs/plans/<stem>-design-review.md` (design phase) or `docs/plans/<stem>-plan-review.md` (plan
-  phase), where `<stem>` is the design/plan filename without its `-design`/`<feature>` tail — i.e.
-  the same stem the existing `2026-05-31-session-owned-lock-claims-design-review.md` uses — and
-  **commit it alongside** the artifact. *(Adopting the existing name, not a new `-adversarial-*`
-  one — adversarial review D1.)* The Dispatch subagent produces the report text; the **lead**
-  writes+commits it (the subagent has no git authority — matches the existing Dispatch pattern).
+- After producing the report, **write it to the repo's existing convention path** and **commit it
+  alongside** the artifact. **Deterministic derivation (one rule, no ambiguity — adversarial review
+  cycle-2 N1):** take the artifact filename, drop the `.md`, then:
+  - **design phase:** append `-review.md` → e.g. `…-doc-sync-design.md` → `…-doc-sync-design-review.md`
+    (matches existing `2026-05-31-session-owned-lock-claims-design-review.md`).
+  - **plan phase:** append `-plan-review.md` → e.g. `2026-06-03-pipeline-evidence-doc-sync.md`
+    (plan has no `-design` tail) → `2026-06-03-pipeline-evidence-doc-sync-plan-review.md`
+    (matches existing `2026-05-31-session-owned-lock-claims-plan-review.md`).
+
+  The retro (D2) derives the **same** path by the same rule — this is the load-bearing D1↔D2
+  contract, so both skills state the rule identically. *(Adopting the existing name, not a new
+  `-adversarial-*` one.)* The Dispatch subagent produces the report text; the **lead** writes+commits
+  it (the subagent has no git authority — matches the existing Dispatch pattern).
 - **Stable finding IDs:** design-phase findings `D1, D2, …`; plan-phase `P1, P2, …`. Each finding
   row carries its ID as the first column. This is the durable anchor the retro correlates against.
 - **Optional `Resolution` column**, filled **once at end-state** (not mutated every revision
@@ -90,11 +96,13 @@ Four issues, two themes, one root: the pipeline emits design/plan/review artifac
 ### D2 — Retro reads committed report + activation jsonl (#70, G2)
 
 `post-merge-retrospective`:
-- Step 2 (score findings): read the committed `…-design-review.md` / `…-plan-review.md` report(s).
-  Use each finding's stable ID; read its optional `Resolution` column as a scoring hint, falling
-  back to downstream evidence (code-review threads, CI) when blank. If the report is absent (ad-hoc
-  PR or pre-mandate branch), state "no committed review report; reconstructed from revision
-  history" — i.e. the *current* behavior becomes the explicit fallback, not the default.
+- Step 2 (score findings): derive the report path by the **same deterministic rule as D1** (drop
+  `.md`; design → `+-review.md`, plan → `+-plan-review.md`) and read the committed
+  `…-design-review.md` / `…-plan-review.md` report(s). Use each finding's stable ID; read its
+  optional `Resolution` column as a scoring hint, falling back to downstream evidence (code-review
+  threads, CI) when blank. If the report is absent (ad-hoc PR or pre-mandate branch — most
+  pre-v6.4.0 features have no committed review), state "no committed review report; reconstructed
+  from revision history" — the *current* behavior becomes the explicit fallback, not the default.
 - Step 5 (score activations): **primary source = `.claude/autodev-state/in-progress.jsonl`**
   (written by `record-activity` in any repo). Read phase from the `args` field of **`ev:"skill"`**
   entries (the lead's `Skill` invocation carries `args:"--phase=design|plan …"`); the
@@ -106,6 +114,15 @@ Four issues, two themes, one root: the pipeline emits design/plan/review artifac
   `tests/skill-activation-audit.sh`") **and** the `**Reads:**` integration bullet must all demote
   the kit-local script to "(kit-dev convenience; absent in consumer repos)". Fixing only Step 5
   would leave the broken instruction re-embedded in every future retro's format section.
+  **Scalpel precision (cycle-2 minor):** under `**Reads:**`, the `.claude/autodev-state/in-progress.jsonl`
+  line is correct and stays; demote only the adjacent `tests/skill-activation-audit.sh` line.
+- **Wire the Step-1e accountability token (cycle-2 N3):** so the `Doc-reconciliation:` PR-body line
+  is not unconsumed prose, retro Step 5 (Missed skill activations) gains one row — when the merged
+  PR's diff touched docs/examples, record `finishing Step 1e` as fired iff a `Doc-reconciliation:`
+  line is present in the PR body, else `unverified`. This reuses the existing missed-activation
+  table (no new retro section) and gives the token a real consumer, making "the retro can see it"
+  true rather than aspirational. (The token's *primary* role remains human + pr-monitoring
+  accountability; the retro row is the durable backstop.)
 
 ### D3 — Pre-PR doc-reconciliation gate (#71 + #72a, G3)
 
@@ -128,7 +145,19 @@ docs/examples:
 - **Accountability token (anti-trap, adversarial review D6):** the agent MUST emit a one-line
   `Doc-reconciliation: clean` or `Doc-reconciliation: N item(s) fixed — <summary>` into the PR
   body. This converts a judgment step that could silently self-pass into a visible record
-  pr-monitoring, the human reviewer, and the retro can see — without a script.
+  pr-monitoring, the human reviewer, and the retro (via D2's new missed-activation row) can see —
+  without a script.
+- **Second edit site — Autonomous Mode list (cycle-2 N2):** Step 1e added to the skill body alone
+  would never fire in autonomous runs, because `finishing-a-development-branch`'s Autonomous Mode
+  section (its numbered list, currently naming Step 1d at item 2) is the actual control flow. D3
+  therefore edits **two** places: the `### Step 1e` body section **and** a new bullet in the
+  Autonomous Mode list — "Run Step 1e (Doc-Reconciliation Check) — conditional on the diff
+  containing a design/reference doc or example artifact" — inserted after the Step 1d item, before
+  PR creation.
+- **Trigger precision (cycle-2 minor):** "design doc, reference/standards doc, or example
+  artifact that describes the feature's behavior". A doc with no corresponding design/plan in
+  `docs/plans/` (e.g. a standalone library README) has nothing to cross-check and trivially passes
+  `clean` — cheap no-op, not a false negative.
 
 ### D4 — Plan-phase naming-convention checklist row (#72b, G4)
 
