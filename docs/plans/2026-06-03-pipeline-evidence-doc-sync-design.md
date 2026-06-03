@@ -56,8 +56,11 @@ Four issues, two themes, one root: the pipeline emits design/plan/review artifac
   (issue #71's *primary* rec). Rejected: false-positive-prone, unbounded, the "onerous/trap"
   class the user explicitly warned against. We take #71's own lighter fallback (explicit labeling
   + identifier match).
-- No new skill. No new test script. No per-gate manual activation-append (the hook covers
-  Skill-invoked gates; manual appends would be redundant bloat).
+- No new skill, no new **standalone** script (heuristic scanner / activation-append helper). A
+  small grep-assertion **regression test** that guards these contracts and runs inside the existing
+  `skill-content-check.yml` CI is in-scope — the design's Multi-Component Validation requires CI
+  enforcement, so the test is the enforcement harness, not new product surface. No per-gate manual
+  activation-append (the hook covers Skill-invoked gates; manual appends would be redundant bloat).
 - No retro restructure beyond the two evidence sources.
 
 ## Design
