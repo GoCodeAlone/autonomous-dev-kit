@@ -31,7 +31,7 @@
 |------|-------|-------|--------|
 | 1 | Pipeline evidence + doc-sync hardening (#69 #70 #71 #72) → v6.4.0 | Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7 | feat/pipeline-evidence-doc-sync |
 
-**Status:** Draft
+**Status:** Locked 2026-06-03T17:10:43Z
 
 ---
 
