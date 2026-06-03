@@ -23,7 +23,7 @@
 - A CI validator that subagents actually emit the `Writes:` ledger (C2 is a soft convention by design; m-4).
 - Gitignoring `.autodev/state/phase-progress.jsonl` (intentionally tracked; kept repo-relative).
 - Bootstrapping `docs/design-guidance.md` (recurring follow-up; not this PR).
-- Retrofitting `scope-lock-apply` / `scope-lock-publish` / `posttool-pr-created` (verified: no state-dir reference).
+- Retrofitting `scope-lock-apply` / `scope-lock-publish` / `posttool-pr-created` (verified: no state-dir reference) and `scope-lock-claim` (its only `autodev-state` mention is a doc comment — no runtime state I/O).
 - Migrating the 2026-05-31 / 2026-06-03 pre-existing review reports.
 
 **PR Grouping:**
@@ -60,7 +60,9 @@ fail(){ printf 'FAIL: %s\n' "$1" >&2; failures=$((failures+1)); }
 if [ -f "$LIB" ]; then
   . "$LIB"
   tmp="$(mktemp -d)"
-  ( cd "$tmp" && git init -q main && cd main && git -c user.email=a@b -c user.name=x commit -q --allow-empty -m init \
+  # portable git init (avoid `git init <dir>` which needs git>=2.28): mkdir + `git -C`
+  mkdir -p "$tmp/main"
+  ( cd "$tmp/main" && git init -q && git -c user.email=a@b -c user.name=x commit -q --allow-empty -m init \
       && git worktree add -q ../wt >/dev/null 2>&1 )
   main_root="$(cd "$tmp/main" && pwd)"
   # (a) from main checkout -> main root
@@ -80,8 +82,9 @@ else
   fail "lib missing: $LIB"
 fi
 
-# --- Group B: all 12 state-writing hooks source the lib + guard the function ---
-HOOKS="completion-claim-guard pre-compact-snapshot pre-tool-scope-guard pretool-demo-fidelity-guard pretool-pr-review-reminder prompt-strict-interpretation record-activity scope-lock-abandon scope-lock-claim scope-lock-complete session-start subagent-scope-guard"
+# --- Group B: all 11 state-WRITING hooks source the lib + guard the function ---
+# (scope-lock-claim is EXCLUDED — its only autodev-state mention is a comment, no runtime state I/O.)
+HOOKS="completion-claim-guard pre-compact-snapshot pre-tool-scope-guard pretool-demo-fidelity-guard pretool-pr-review-reminder prompt-strict-interpretation record-activity scope-lock-abandon scope-lock-complete session-start subagent-scope-guard"
 for h in $HOOKS; do
   f="$ROOT/hooks/$h"
   if grep -q "lib-autodev-paths.sh" "$f" && grep -q "declare -f autodev_repo_root" "$f"; then
@@ -91,23 +94,21 @@ for h in $HOOKS; do
   fi
 done
 
-# --- Group C: lib-missing degradation — a hook with the lib hidden still emits valid output ---
-# record-activity is the simplest writer: feed it a Skill payload with a bogus cwd, lib hidden,
-# and assert it does NOT crash (exit !=2/127) and writes under the cwd fallback.
-tmpd="$(mktemp -d)"; mkdir -p "$tmpd/.git"  # make it look git-less enough to fallback
-payload='{"tool_name":"Skill","tool_input":{"skill":"autodev:x"},"cwd":"'"$tmpd"'"}'
-LIBBAK=""; if [ -f "$LIB" ]; then LIBBAK="$(mktemp)"; cp "$LIB" "$LIBBAK"; fi
-# Don't actually delete the real lib; instead run the hook with a PATH/source that can't find it:
-# simulate by copying record-activity to a temp dir WITHOUT the sibling lib.
-sandbox="$(mktemp -d)"; cp "$ROOT/hooks/record-activity" "$sandbox/record-activity"
+# --- Group C: lib-missing degradation — BEHAVIORAL proof (m-1): copy record-activity to a
+# sandbox WITHOUT the sibling lib + a NON-git cwd, and assert it (a) doesn't crash AND
+# (b) actually writes to the cwd-fallback location ($cwd/.claude/autodev-state/in-progress.jsonl),
+# proving the `declare -f` identity-on-cwd fallback fired (not a vacuous exit-0).
+cwdfb="$(mktemp -d)"   # non-git dir => resolver (if it existed) AND the fallback both yield $cwdfb
+sandbox="$(mktemp -d)"; cp "$ROOT/hooks/record-activity" "$sandbox/record-activity"  # NO lib sibling
+payload='{"tool_name":"Skill","tool_input":{"skill":"autodev:degrade-probe"},"cwd":"'"$cwdfb"'"}'
 out_rc=0; printf '%s' "$payload" | bash "$sandbox/record-activity" >/dev/null 2>&1 || out_rc=$?
-# 127/2 would indicate the missing-function crash; 0 or 1 (benign) is acceptable degradation.
-if [ "$out_rc" != "127" ] && [ "$out_rc" != "2" ]; then
-  pass "degradation: record-activity survives missing lib (rc=$out_rc)"
+if [ "$out_rc" != "127" ] && [ "$out_rc" != "2" ] \
+   && grep -q "degrade-probe" "$cwdfb/.claude/autodev-state/in-progress.jsonl" 2>/dev/null; then
+  pass "degradation: record-activity (lib hidden) wrote to cwd fallback, no crash (rc=$out_rc)"
 else
-  fail "degradation: record-activity crashed without lib (rc=$out_rc)"
+  fail "degradation: record-activity did not degrade to cwd fallback (rc=$out_rc; file=$cwdfb/.claude/autodev-state/in-progress.jsonl)"
 fi
-rm -rf "$tmpd" "$sandbox"; [ -n "$LIBBAK" ] && rm -f "$LIBBAK"
+rm -rf "$cwdfb" "$sandbox"
 
 echo ""; echo "Results: $failures failure(s)"; [ "$failures" -eq 0 ]
 ```
@@ -147,29 +148,40 @@ autodev_repo_root() {
 
 ---
 
-### Task 3: Retrofit the 12 state-writing hooks
+### Task 3: Retrofit the 11 state-writing hooks (+ keep hook-contracts green)
 
-**Change class:** Hook. Verification: Task-1 Group B (all 12 wired) + Group C (degradation) pass; `tests/hook-contracts.sh` still green (no behavior regression).
+**Change class:** Hook. Verification: Task-1 Group B (all 11 wired) + Group C (degradation) pass; `tests/hook-contracts.sh` still green **after the C-1 test fix in Step 4** (no behavior regression).
 
-**Files (Modify, all in `hooks/`):** `completion-claim-guard`, `pre-compact-snapshot`, `pre-tool-scope-guard`, `pretool-demo-fidelity-guard`, `pretool-pr-review-reminder`, `prompt-strict-interpretation`, `record-activity`, `scope-lock-abandon`, `scope-lock-claim`, `scope-lock-complete`, `session-start`, `subagent-scope-guard`.
+**Files (Modify, all in `hooks/`):** `completion-claim-guard`, `pre-compact-snapshot`, `pre-tool-scope-guard`, `pretool-demo-fidelity-guard`, `pretool-pr-review-reminder`, `prompt-strict-interpretation`, `record-activity`, `scope-lock-abandon`, `scope-lock-complete`, `session-start`, `subagent-scope-guard`. Plus `tests/hook-contracts.sh` (Step 4).
 
-**Step 0 (guard against list drift):** run `grep -rlE 'autodev-state|\.autodev/state' hooks/ | sort` — confirm it returns exactly these 12. If it differs, STOP and reconcile before editing.
+**Step 0 (guard against list drift):** run `grep -rlE 'autodev-state|\.autodev/state' hooks/ | sort` — it returns **12** files, but `scope-lock-claim` is a **comment-only** match (line 11 is a doc comment; it performs no runtime state I/O — the session-lock write is delegated to `pre-tool-scope-guard`). Retrofit the **11** with real state I/O; do NOT retrofit `scope-lock-claim`. If the grep returns any *other* set, STOP and reconcile.
 
-**Step 1:** In each hook, immediately after its `cwd_dir` is determined (the line `[ -z "$cwd_dir" ] && cwd_dir="${PWD}"` or equivalent), insert:
+**Step 1:** In each of the 11 hooks, immediately after its `cwd_dir` is finalized, insert:
 ```sh
 . "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || true
 declare -f autodev_repo_root >/dev/null 2>&1 || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
 ADK_ROOT="$(autodev_repo_root "$cwd_dir")"
 ```
-Then replace every `${cwd_dir}/.claude/autodev-state` → `${ADK_ROOT}/.claude/autodev-state` and every `${cwd_dir}/.autodev/state` → `${ADK_ROOT}/.autodev/state` **in that hook**. Leave non-state uses of `cwd_dir` (e.g. `${cwd_dir}/docs/plans`, repo-content reads) UNCHANGED — those legitimately want the working dir, not the canonical root.
+**Anchor point per hook is NOT uniform — use these explicit anchors (I-1):**
+- Most hooks (`record-activity`, `pre-compact-snapshot`, `subagent-scope-guard`, `prompt-strict-interpretation`, `pre-tool-scope-guard`, `completion-claim-guard`, `pretool-pr-review-reminder`, `pretool-demo-fidelity-guard`): after their `[ -z "$cwd_dir" ] && cwd_dir="${PWD}"` line.
+- **`session-start` (I-1):** insert **after line 45** (`[ -n "$cwd_from_hook" ] && cwd_dir="$cwd_from_hook"`) — its init is two-step (`cwd_dir="${PWD}"` at L38, payload override at L45). Inserting before L45 would derive `ADK_ROOT` from `$PWD` instead of the payload `.cwd` and silently break the feature for this hook.
 
-**Special cases (per design m-3 / cycle-2 minors):**
-- `scope-lock-complete`, `scope-lock-abandon`: they compute `repo_root` from the plan path and take `$PWD`. Replace that `repo_root=$(cd "${plan_dir}/../.." && pwd)` derivation with `ADK_ROOT="$(autodev_repo_root "$PWD")"` (source the lib first). This intentionally switches worktree→main root for state pruning.
-- `scope-lock-claim`: it only **reads** `session-locks.jsonl` for verification (write is delegated to `pre-tool-scope-guard`). Anchor the read path to `ADK_ROOT` too (so it reads the same canonical file), but do not add an unused `STATE_DIR` (cycle-2 minor).
+Then replace every `${cwd_dir}/.claude/autodev-state` → `${ADK_ROOT}/.claude/autodev-state` and every `${cwd_dir}/.autodev/state` → `${ADK_ROOT}/.autodev/state` **in that hook**. Leave non-state uses of `cwd_dir` (`${cwd_dir}/docs/plans`, repo-content reads) UNCHANGED.
 
-**Step 2: Verify.** `bash tests/adk-path-canonicalization.sh` → Group B + C PASS. `bash tests/hook-contracts.sh` → exit 0 (no contract regression). `bash tests/hook-stdout-discipline.sh` → exit 0.
+**Special cases:**
+- **`pre-compact-snapshot` (I-2):** besides the lock-snapshot append at its end, it reads+writes `reminder_marker="${cwd_dir}/.claude/autodev-state/pr-reminder-seen"` at lines ~43–55 **before** its `noop_json` early-exit (the common path). The Step-1 insert (after the L33 `cwd_dir` line) precedes line 43, so `ADK_ROOT` is in scope — make sure the `reminder_marker` substitution is included, or the pr-reminder dedup splits across worktrees.
+- **`scope-lock-complete`, `scope-lock-abandon`:** they currently derive `repo_root=$(cd "${plan_dir}/../.." && pwd)` from the plan path and take the shell `$PWD`. Replace that derivation with `ADK_ROOT="$(autodev_repo_root "$PWD")"` (source the lib first). This **intentionally** switches worktree→main root for state pruning (design m-3).
 
-**Step 3: Commit.** `git add hooks/ && git commit -m "refactor(hooks): all 12 state writers resolve canonical root via shared lib (#70 residual)"`
+**Step 4 (C-1 — keep hook-contracts.sh green):** because `scope-lock-complete`/`-abandon` now resolve their root from `$PWD`, the two **bare** invocations in `tests/hook-contracts.sh` that run from `$REPO_ROOT` (a real git checkout) must run from inside the tmp fixture instead — otherwise state ops land in the real checkout and every pruning assertion fails. Rewrite **line 641** and **line 707**:
+```sh
+# before:  hooks/scope-lock-complete "$tmp/docs/plans/example.md" --evidence "tests pass" ...
+# after :  ( cd "$tmp" && "$REPO_ROOT/hooks/scope-lock-complete" docs/plans/example.md --evidence "tests pass" ... )
+```
+matching the already-correct cd-wrapped invocations at lines 746/790/833 (and all `scope-lock-abandon` tests). `$tmp` is a non-git `mktemp -d`, so inside it the resolver falls back to `$tmp` — restoring the prior behavior the assertions expect.
+
+**Step 5: Verify.** `bash tests/adk-path-canonicalization.sh` → Group B (11 wired) + C PASS. `bash tests/hook-contracts.sh` → exit 0 (Step-4 test fix applied → no contract regression). `bash tests/hook-stdout-discipline.sh` → exit 0.
+
+**Step 6: Commit.** `git add hooks/ tests/hook-contracts.sh && git commit -m "refactor(hooks): 11 state writers resolve canonical root via shared lib (#70 residual)"`
 
 **Rollback:** revert this commit → hooks fall back to per-hook cwd-scoping (prior behavior); no state migration needed.
 
@@ -303,7 +315,7 @@ jobs:
 
 **Files:** Modify `.github/workflows/skill-content-check.yml` (add `tests/adk-path-canonicalization.sh` step + `hooks/**` path so hook changes trigger it).
 
-**Step 1:** Add `hooks/**` and `tests/adk-path-canonicalization.sh` to the workflow `paths` (push + PR), and a step `run: bash tests/adk-path-canonicalization.sh`.
+**Step 1:** Two distinct edits to `skill-content-check.yml` (m-3): (a) add `hooks/**` and `tests/adk-path-canonicalization.sh` to **both** the `push.paths` and `pull_request.paths` filters (so hook/test edits re-trigger), AND (b) add a `run:` step `run: bash tests/adk-path-canonicalization.sh` after the existing content-grep step.
 
 **Step 2: Run the FULL local gate — all exit 0:**
 ```bash

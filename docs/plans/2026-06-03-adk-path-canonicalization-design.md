@@ -92,10 +92,12 @@ Uses `${BASH_SOURCE[0]:-$0}` to match the repo's existing `SCRIPT_DIR` conventio
 `record-activity`, `scope-lock-abandon`, `scope-lock-claim`, `scope-lock-complete`,
 `session-start`, `subagent-scope-guard`.
 
-Explicitly **excluded** (verified no state reference): `scope-lock-apply` and `scope-lock-publish`
-(write only the `.scope-lock` sidecar next to the plan — not state dirs) and `posttool-pr-created`
-(a PR-creation reminder, no state). The plan re-runs the grep as its first step and fails if the
-list drifts.
+Explicitly **excluded**: `scope-lock-apply` and `scope-lock-publish` (write only the `.scope-lock`
+sidecar next to the plan — not state dirs), `posttool-pr-created` (a PR-creation reminder, no
+state), and `scope-lock-claim` (its single `autodev-state` mention is a **doc comment** — no
+runtime state I/O; the session-lock write is delegated to `pre-tool-scope-guard`). So the grep
+returns 12 paths but only **11** are real state writers to retrofit. The plan re-runs the grep as
+its first step and treats `scope-lock-claim` as the known comment-only exclusion.
 
 **Behavioral-change note (m-3):** `scope-lock-complete` and `scope-lock-abandon` currently derive
 `repo_root` from the **plan path** (`cd "${plan_dir}/../.." && pwd`, assuming `docs/plans/` depth);
