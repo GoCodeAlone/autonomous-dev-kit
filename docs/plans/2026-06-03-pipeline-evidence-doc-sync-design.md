@@ -84,9 +84,10 @@ Four issues, two themes, one root: the pipeline emits design/plan/review artifac
   cycle): a commit SHA, `accepted — <reason>`, or `false-positive`; left blank/`pending` if
   unresolved. D2 wires retro Step 2 to read it as a *hint* (falling back to downstream evidence
   when blank), so the field has a real consumer at near-zero maintenance.
-- Idempotent: re-running the review on a revised artifact **overwrites** the same report file
-  (latest state), not a new file per cycle. Safe under sequential execution (the default); no
-  lock needed at this scale.
+- Idempotent: re-running the review on a revised artifact updates **the same single report file
+  per phase** (not a new file per cycle) — the file holds the latest cumulative state; multi-cycle
+  runs may append a `## Cycle N` section so finding→resolution history survives for the retro.
+  Safe under sequential execution (the default); no lock needed at this scale.
 - **Back-compat:** pre-v6.4.0 review files (no finding IDs, older table shape) remain valid; the
   retro reads both. **Dogfood caveat:** during *this* feature's own pipeline the skill text hasn't
   changed yet, so the lead emulates D1 by hand (writing+committing each phase's review file under

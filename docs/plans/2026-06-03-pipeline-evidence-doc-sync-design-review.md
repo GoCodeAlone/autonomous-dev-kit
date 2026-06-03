@@ -55,3 +55,14 @@
 | N5 | Minor | YAGNI | Step 1e trigger "README/reference doc" broader than motivating issues. | Trigger reworded to "describes the feature's behavior"; docs with no `docs/plans/` counterpart trivially pass — cheap no-op. |
 
 **Cycle-2 verdict:** all 10 cycle-1 findings verified resolved in design text; the 1 Critical + 2 Important + 2 Minor introduced by the revision are now fixed (deterministic stem rule, dual edit-site for Step 1e, wired token consumer, scalpel Reads edit, trigger reword). No skill added, no scanner, no net bloat beyond ~+20 lines to adversarial-design-review and ~+14 to finishing. Cycle 3 re-run to confirm convergence.
+
+## Cycle 3 (convergence) — PASS
+
+Zero Critical, zero Important. Cycle-2 N1/N2/N3 verified genuinely resolved in design text (deterministic stem rule stated identically in D1 & D2 with both worked examples; Step 1e dual edit-site explicit; token wired to retro Step 5). Converged.
+
+Remaining Minors (→ plan-time clarifications, not design blockers):
+- **M1:** retro Step 5 must check the diff touched docs/examples *before* recording a Step-1e row, else a no-docs PR could get a spurious `unverified` row. Design already gates on "when the diff touched docs/examples"; plan makes it a hard precondition.
+- **M2:** spell out in the plan that an old (no-ID) report → retro falls back to downstream evidence for scoring.
+- **M3 (fixed in design):** clarified "overwrite" = one file per phase, may append `## Cycle N` sections (history survives).
+
+**Final design verdict: PASS @ cycle 3.** Proceed to writing-plans.
