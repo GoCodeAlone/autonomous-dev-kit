@@ -24,8 +24,10 @@ has "$ADR" "Write AND commit the report" \
 hasE "$ADR" 'stable finding ID|stable .*ID' \
   && pass "#69 ADR defines stable finding IDs" \
   || bad  "#69 ADR missing stable finding IDs"
-# P4: guard the load-bearing D1<->D2 path contract -- retro must cite the same derivation
-hasE "$RETRO" 'same deterministic rule|-plan-review\.md' \
+# P4/M1: guard the load-bearing D1<->D2 path contract -- retro must cite the SAME derivation.
+# Assert the specific load-bearing phrase only (dropping the broad '-plan-review.md' OR branch,
+# which is ambient vocabulary that could false-pass on an incidental path mention).
+has "$RETRO" "same deterministic rule" \
   && pass "#69/#70 retro derives the report path by the same rule (D1<->D2 contract)" \
   || bad  "#69/#70 retro missing the shared path-derivation rule"
 

@@ -158,7 +158,7 @@ inherits the design's blast radius) and adds:
 **Findings (Minor):**
 - `D3` [class] [section/line]: <description>. Recommendation: <concrete fix>. _Resolution: <optional>._
 
-Design-phase finding IDs are `D1, D2, …`; plan-phase `P1, P2, …`. IDs are the durable anchor `post-merge-retrospective` correlates against; the optional `Resolution` is a scoring hint (retro falls back to downstream evidence when omitted). Each finding has a **stable finding ID** as its first token.
+Design-phase finding IDs are `D1, D2, …`; plan-phase `P1, P2, …`, numbered **sequentially across all findings regardless of severity** (`D1` is the first finding overall, not the first Critical). IDs are the durable anchor `post-merge-retrospective` correlates against; the optional `Resolution` is a scoring hint (retro falls back to downstream evidence when omitted). Each finding has a **stable finding ID** as its first token.
 
 **Bug-class scan transcript:**
 | Class | Result | Note |
