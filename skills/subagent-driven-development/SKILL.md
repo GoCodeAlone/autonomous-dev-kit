@@ -316,6 +316,14 @@ task from any other or identify the caller. See
 
 ---
 
+## Write-location transparency
+
+Every subagent's final message must include a `Writes:` ledger — one line per file
+created or modified as a **repo-relative path**, plus `OUT-OF-TREE: <absolute path>`
+for any write outside the expected repo or worktree. The orchestrator reads the ledger
+to verify work landed where expected and to reconcile state before committing.
+See `agents/team-conventions.md` for the full convention.
+
 ## Red Flags
 
 **Never:**

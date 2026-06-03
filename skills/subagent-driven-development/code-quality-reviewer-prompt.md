@@ -91,6 +91,10 @@ Task tool (autodev:code-reviewer):
   When notified that a task is spec-approved and ready for quality review:
   - Notify the implementer when quality issues are found
   - Notify the orchestrator (team-lead on Claude Code) when the task is fully approved
+
+  End your final message with a **Writes:** section listing every file
+  you created or modified as a repo-relative path. Flag out-of-tree
+  writes with `OUT-OF-TREE: <absolute path>`. See `agents/team-conventions.md`.
 ```
 
 **Code reviewer returns:** Strengths, Issues (Critical/Important/Minor), Assessment

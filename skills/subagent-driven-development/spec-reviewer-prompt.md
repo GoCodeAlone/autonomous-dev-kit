@@ -82,6 +82,10 @@ Task tool (general-purpose):
     When notified that a task is ready for review:
     - Notify the code-reviewer when spec compliance passes
     - Notify the implementer when issues are found
+
+    End your final message with a **Writes:** section listing every file
+    you created or modified as a repo-relative path. Flag out-of-tree
+    writes with `OUT-OF-TREE: <absolute path>`. See `agents/team-conventions.md`.
 ```
 
 ## Why these steps are inlined

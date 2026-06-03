@@ -78,3 +78,11 @@ Team conventions apply identically in both execution modes:
   company / product-version / incident references. Dependency,
   runtime, and tooling version numbers are allowed when needed for
   accurate technical guidance.
+
+## Writes: ledger
+
+Every subagent's **final message** must end with a `Writes:` section — one line per file
+created or modified, as a **repo-relative path** (e.g. `hooks/record-activity — modified`).
+If any write landed outside the expected repo or worktree, flag it explicitly:
+`OUT-OF-TREE: <absolute path> — <reason>`. The orchestrator reads this ledger to confirm
+work landed where expected and to relocate or reconcile state before committing.
