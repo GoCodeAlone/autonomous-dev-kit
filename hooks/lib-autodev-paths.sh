@@ -1,5 +1,6 @@
-#!/usr/bin/env bash
-# lib-autodev-paths.sh — canonical ADK state-root resolver, sourced by state-writing hooks.
+# shellcheck shell=bash
+# lib-autodev-paths.sh — canonical ADK state-root resolver, SOURCED by state-writing hooks
+# (no shebang: this file is sourced, never executed directly — avoids shellcheck SC2148).
 # autodev_repo_root <cwd> -> canonical repo root (shared across worktrees, survives worktree removal).
 # set -u safe: every var is assigned before any read. Sourced; uses `local` (all callers are bash).
 autodev_repo_root() {

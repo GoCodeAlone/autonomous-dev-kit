@@ -188,7 +188,10 @@ prune_jsonl() {
             return 1
         }
         if [ -n "$pl" ]; then
-            resolved=$(canonical_path_from_base "$ADK_ROOT" "$pl" 2>/dev/null || true)
+            # Compare against $PWD (the same base plan_abs was resolved with), NOT $ADK_ROOT.
+            # State FILES live at $ADK_ROOT (shared), but entry matching must use the invoking
+            # base so a worktree completion still prunes its own entry (code-review Critical).
+            resolved=$(canonical_path_from_base "$PWD" "$pl" 2>/dev/null || true)
             [ "$resolved" = "$plan_abs" ] && continue
         fi
         printf '%s\n' "$line" >> "$tmp"

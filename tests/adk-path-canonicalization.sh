@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/adk-path-canonicalization.sh — proves the canonical ADK state-path resolver
-# and that all 12 state-writing hooks adopt it. (#70 residual; v6.5.0)
+# and that all 11 state-writing hooks adopt it. (#70 residual; v6.5.0)
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 LIB="$ROOT/hooks/lib-autodev-paths.sh"
@@ -61,5 +61,48 @@ else
   fail "degradation: record-activity did not degrade to cwd fallback (rc=$out_rc; file=$cwdfb/.claude/autodev-state/in-progress.jsonl)"
 fi
 rm -rf "$cwdfb" "$sandbox"
+
+# --- Group D: worktree prune regression (code-review Critical). scope-lock-complete run from a
+# linked WORKTREE must prune the session-lock entry at the CANONICAL (main) root. With the bug
+# (prune compares against $ADK_ROOT instead of $PWD), the worktree-relative entry never matches
+# the main-rooted resolution, so the stale lock is never pruned.
+if command -v jq >/dev/null 2>&1; then
+  d="$(mktemp -d)"; mkdir -p "$d/main"
+  ( cd "$d/main" && git init -q && git -c user.email=a@b -c user.name=x commit -q --allow-empty -m init \
+      && git worktree add -q ../wt >/dev/null 2>&1 )
+  wt="$d/wt"; mainroot="$(cd "$d/main" && pwd -P)"
+  mkdir -p "$wt/docs/plans" "$wt/tests" "$mainroot/.claude/autodev-state"
+  cp "$ROOT/tests/plan-scope-check.sh" "$wt/tests/plan-scope-check.sh" 2>/dev/null; chmod +x "$wt/tests/plan-scope-check.sh" 2>/dev/null
+  cat > "$wt/docs/plans/p.md" <<'PLAN'
+# P
+
+## Scope Manifest
+
+**PR Count:** 1
+**Tasks:** 1
+**Out of scope:**
+- (none)
+
+**PR Grouping:**
+
+| PR # | Title | Tasks | Branch |
+|------|-------|-------|--------|
+| 1 | P | Task 1 | feat/p |
+
+**Status:** Locked 2026-05-25T00:00:00Z
+
+### Task 1: P
+PLAN
+  bash "$ROOT/hooks/scope-lock-apply" "$wt/docs/plans/p.md" >/dev/null 2>&1
+  jq -nc --arg pl "docs/plans/p.md" '{ev:"session-lock",session:"s.jsonl",pl:$pl}' \
+    > "$mainroot/.claude/autodev-state/session-locks.jsonl"
+  ( cd "$wt" && "$ROOT/hooks/scope-lock-complete" docs/plans/p.md --evidence "x" >/dev/null 2>&1 )
+  if grep -q 'docs/plans/p.md' "$mainroot/.claude/autodev-state/session-locks.jsonl" 2>/dev/null; then
+    fail "worktree prune: session-lock NOT pruned at canonical root (compare-base bug)"
+  else
+    pass "worktree prune: scope-lock-complete from worktree pruned the canonical session-lock"
+  fi
+  rm -rf "$d"
+fi
 
 echo ""; echo "Results: $failures failure(s)"; [ "$failures" -eq 0 ]

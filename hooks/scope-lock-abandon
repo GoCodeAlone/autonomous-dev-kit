@@ -106,7 +106,9 @@ prune_jsonl() {
         [ -n "$line" ] || continue
         pl=$(printf '%s' "$line" | jq -r '.pl // empty' 2>/dev/null || true) || { rm -f "$tmp"; return 1; }
         if [ -n "$pl" ]; then
-            resolved=$(canonical_path_from_base "$ADK_ROOT" "$pl" 2>/dev/null || true)
+            # Compare against $PWD (same base as plan_abs), NOT $ADK_ROOT — state FILES are at
+            # $ADK_ROOT (shared) but entry matching must use the invoking base (code-review Critical).
+            resolved=$(canonical_path_from_base "$PWD" "$pl" 2>/dev/null || true)
             [ "$resolved" = "$plan_abs" ] && continue
         fi
         printf '%s\n' "$line" >> "$tmp"
