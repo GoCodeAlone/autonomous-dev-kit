@@ -64,7 +64,9 @@ autodev_repo_root() {
   # git / non-git dir yields an empty $_gcd → fallback to $cwd (NOT `/` from `cd ""/..`).
   _gcd="$(cd "$cwd" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null || true)"
   _root=""
-  [ -n "$_gcd" ] && _root="$(cd "$cwd" 2>/dev/null && cd "$_gcd/.." 2>/dev/null && pwd || true)"
+  # pwd -P (physical): normalizes the macOS /var->/private symlink + git's absolute-vs-relative
+  # common-dir so a main-checkout and a worktree invocation return the IDENTICAL root (C-2).
+  [ -n "$_gcd" ] && _root="$(cd "$cwd" 2>/dev/null && cd "$_gcd/.." 2>/dev/null && pwd -P || true)"
   if [ -n "$_root" ]; then printf '%s\n' "$_root"; else printf '%s\n' "$cwd"; fi
 }
 ```

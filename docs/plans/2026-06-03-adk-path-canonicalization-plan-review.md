@@ -30,3 +30,11 @@
 2. Behavioral degradation assertion — **taken** (m-1).
 
 **Verdict reasoning:** One Critical (a concrete `hook-contracts.sh` regression the plan didn't instruct to fix) + two Importants (wrong retrofit target `scope-lock-claim`; non-standard `session-start` anchor + missing `pre-compact-snapshot` special case) + four Minors — all verified against the real hook code, all with narrow fixes now in the plan text. The resolver design and the worktree fixture proof are sound. Re-run to confirm convergence.
+
+## Cycle 2 (re-run) — all cycle-1 resolved; revision introduced 1 Critical, now fixed
+
+| id | sev | class | issue | resolution |
+|---|---|---|---|---|
+| C-2 | Critical | Portability / test correctness | macOS `/var`→`/private` symlink asymmetry: the resolver returned the **logical** path (`/var/...`) for a main checkout (relative `.git` + `pwd`) but the **physical** path (`/private/var/...`) for a linked worktree (git's absolute common-dir), so Group-A assertion (b) failed the mandatory **local** green gate (passed in CI/Linux — worst TDD failure mode). The reviewer's `--show-toplevel` fix would have broken case (a). | Resolver git-branch uses **`pwd -P`** (physical) so main-checkout and worktree invocations return the IDENTICAL physical root; Task-1 `main_root` uses `pwd -P` too. **Empirically verified** on macOS: (a) main, (b) worktree both → `/private/var/.../main`; (c) non-git → raw `$cwd`; (d) override — all 4 OK. Also strictly more robust in production (symlink-stable). Design resolver updated to match. |
+
+**Cycle-2 verdict:** 7/7 cycle-1 findings verified resolved in plan text against the real hooks; the 1 new Critical (resolver symlink normalization) is fixed via `pwd -P` and proven on the author's macOS. Re-run cycle 3 to confirm convergence.
