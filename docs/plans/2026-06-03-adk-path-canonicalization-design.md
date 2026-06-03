@@ -21,8 +21,8 @@ Three related directory-confusion failure modes:
    there's no ledger to relocate or reconcile the state from.
 3. **Machine paths leaking into committed artifacts.** Designs, plans, retros, review reports,
    and ADRs are committed to public history. An absolute operator path
-   (`/Users/jon/Documents/GitHub/...`) baked into one of them leaks the operator's machine layout
-   forever. This already happened: `docs/testing.md:152` contains a `/Users/jon/...` example path.
+   (`/Users/<name>/Documents/GitHub/...`) baked into one of them leaks the operator's machine
+   layout forever. This already happened: `docs/testing.md` contains an operator-home example path.
 
 ## Goals / Non-goals
 
@@ -60,29 +60,49 @@ or `.autodev/state`. It exports one function:
 autodev_repo_root() {
   cwd="${1:-$PWD}"
   if [ -n "${AUTODEV_STATE_ROOT:-}" ]; then printf '%s\n' "$AUTODEV_STATE_ROOT"; return 0; fi
-  root="$(cd "$cwd" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd)"
-  if [ -n "$root" ]; then printf '%s\n' "$root"; else printf '%s\n' "$cwd"; fi
+  # C-1 fix: capture --git-common-dir FIRST and guard non-empty before cd, so an absent
+  # git / non-git dir yields an empty $_gcd → fallback to $cwd (NOT `/` from `cd ""/..`).
+  _gcd="$(cd "$cwd" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null || true)"
+  _root=""
+  [ -n "$_gcd" ] && _root="$(cd "$cwd" 2>/dev/null && cd "$_gcd/.." 2>/dev/null && pwd || true)"
+  if [ -n "$_root" ]; then printf '%s\n' "$_root"; else printf '%s\n' "$cwd"; fi
 }
 ```
 
-Each consumer replaces `STATE_DIR="${cwd_dir}/.claude/autodev-state"` with:
+Each consumer sources the lib and then **guards on the function actually existing** (I-1 fix —
+covers both "lib missing" AND "lib present but function absent", which under `set -euo pipefail`
+would otherwise exit 127 and kill the hook):
 ```sh
-. "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || true
+declare -f autodev_repo_root >/dev/null 2>&1 || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
 ADK_ROOT="$(autodev_repo_root "$cwd_dir")"
 STATE_DIR="${ADK_ROOT}/.claude/autodev-state"
 ```
 
-**Robustness invariant (the #66 lesson — hooks must never break):** if the lib can't be sourced,
-the inline fallback defines `autodev_repo_root` as the identity-on-cwd function, so the hook
-degrades to **exactly today's cwd-scoped behavior** rather than erroring. A missing/again-broken
-lib is a no-op regression, never a hook failure.
+**Robustness invariant (the #66 lesson — hooks must never break):** the `declare -f` guard
+defines an identity-on-cwd fallback whenever `autodev_repo_root` is not in scope after the source
+attempt, so a missing OR broken-interface lib degrades to **exactly today's cwd-scoped behavior**
+rather than erroring. Verified by the lib-missing + empty-lib tests (Multi-Component Validation).
+Uses `${BASH_SOURCE[0]:-$0}` to match the repo's existing `SCRIPT_DIR` convention (m-2).
 
-**Consumers to retrofit** (every file referencing the state dirs):
-`session-start`, `pre-compact-snapshot`, `subagent-scope-guard`, `prompt-strict-interpretation`,
-`record-activity`, `completion-claim-guard`, `pretool-pr-review-reminder`, `pre-tool-scope-guard`,
-`posttool-pr-created`, and the helpers `scope-lock-apply`, `scope-lock-claim`,
-`scope-lock-complete`, `scope-lock-abandon`, `scope-lock-publish`. (Exact list confirmed by
-`grep -rl 'autodev-state\|\.autodev/state' hooks/` at plan time.)
+**Consumers to retrofit — authoritative list (I-3 fix), the exact 12 files from
+`grep -rlE 'autodev-state|\.autodev/state' hooks/`:**
+`completion-claim-guard`, `pre-compact-snapshot`, `pre-tool-scope-guard`,
+`pretool-demo-fidelity-guard`, `pretool-pr-review-reminder`, `prompt-strict-interpretation`,
+`record-activity`, `scope-lock-abandon`, `scope-lock-claim`, `scope-lock-complete`,
+`session-start`, `subagent-scope-guard`.
+
+Explicitly **excluded** (verified no state reference): `scope-lock-apply` and `scope-lock-publish`
+(write only the `.scope-lock` sidecar next to the plan — not state dirs) and `posttool-pr-created`
+(a PR-creation reminder, no state). The plan re-runs the grep as its first step and fails if the
+list drifts.
+
+**Behavioral-change note (m-3):** `scope-lock-complete` and `scope-lock-abandon` currently derive
+`repo_root` from the **plan path** (`cd "${plan_dir}/../.." && pwd`, assuming `docs/plans/` depth);
+they will switch to `autodev_repo_root "$PWD"` (git-canonical). In a worktree this **intentionally**
+changes the result from the worktree root to the main root — that is the whole point of the change,
+but the plan must call it out so the implementer doesn't treat it as a bug. These two helpers take
+the shell `$PWD` (not a hook payload `.cwd`) as the cwd argument.
 
 `post-merge-retrospective` (the #70 consumer) reads `.claude/autodev-state/in-progress.jsonl` from
 the same canonical root, closing the original residual.
@@ -100,21 +120,44 @@ anything that might be quoted into an artifact; the one allowed absolute path is
 `OUT-OF-TREE:` escape, which exists precisely to surface a mistake to the orchestrator (transcript
 only, never committed).
 
+**Honor-system caveat (m-4):** C2 is a convention, not a mechanical gate — there is no CI validator
+that a subagent emitted a ledger (the orchestrator just reads it when present). This is deliberate
+(a ledger-presence linter on free-text subagent output would be brittle), but it means the ledger's
+value depends on the prompt templates keeping it salient; if subagents stop emitting it the
+orchestrator simply falls back to inspecting the diff, as today. Accepted as a soft convention.
+
 ### C3 — Artifact path-hygiene gate
 
 New `tests/no-machine-paths.sh`: greps the committed-artifact set (`docs/`, `decisions/`) for
-operator-home absolute paths — `/Users/<name>/`, `/home/<name>/`, and literal `$HOME`/`~/` expanded
-forms — and fails with the offending `file:line`. Narrow by construction: it targets home-rooted
-machine paths, not all absolute paths (so `/healthz`, `/tmp/x`, `/etc/...` in legitimate examples
-pass). Wired into `.github/workflows/skill-content-check.yml` (which already gates docs/skills) +
-its `paths:` filter. The existing leak at `docs/testing.md:152` is fixed to a placeholder
-(`/path/to/autodev` or `<repo-root>/...`) in the same PR so the gate is green on landing.
+operator-home absolute paths and fails with the offending `file:line`.
+
+**Placeholder-aware regex (C-2 fix — the self-referential trap).** A feature *about* machine paths
+must be able to *document* the forbidden pattern. The gate matches a home root followed by a **real
+segment that begins with an alphanumeric**: `(/Users/|/home/)[A-Za-z0-9][A-Za-z0-9._-]*`. This
+catches a real leak (home root + a literal username segment) but **ignores an angle-bracket placeholder**
+(`/Users/<name>/...` — `<` is not alphanumeric, so no match) and ellipsis (`/Users/...`). The
+**author convention** therefore is: to illustrate a machine path in any artifact, write it with an
+angle-bracket placeholder segment (`/Users/<name>/...`, `/home/<user>/...`). Belt-and-suspenders:
+any line containing the literal sentinel `path-hygiene-allow` (e.g. in an HTML comment) is skipped,
+for the rare case a literal real-looking path must appear. Narrow by construction — targets
+home-rooted paths only, so `/healthz`, `/tmp/x`, `/etc/...` pass untouched.
+
+**This design doc, its plan, and the retro all use `/Users/<name>/` placeholders** so the gate is
+green on landing. The pre-existing real leak in `docs/testing.md` is rewritten to a placeholder in
+the same PR.
+
+**CI wiring (I-2 fix).** A **dedicated** `.github/workflows/path-hygiene.yml` with **no `paths:`
+filter** runs `tests/no-machine-paths.sh` on every push + PR. The existing
+`skill-content-check.yml` filters on `skills/**`/`agents/**`, so a docs-only or decisions-only PR
+that adds a leak would never trigger it — a false guarantee. A standalone always-on workflow closes
+that hole permanently.
 
 Plus a one-line rule in the artifact-writing skills (`brainstorming`, `writing-plans`,
 `post-merge-retrospective`, `adversarial-design-review`, `recording-decisions`): committed
-artifacts use repo-relative paths; never absolute machine paths. Local state logs
-(`.claude/autodev-state/*`, gitignored) may hold absolute paths; the tracked
-`.autodev/state/phase-progress.jsonl` stays repo-relative (already is).
+artifacts use repo-relative paths; illustrate machine paths only with `<placeholder>` segments;
+never a literal operator-home path. Local state logs (`.claude/autodev-state/*`, gitignored) may
+hold absolute paths; the tracked `.autodev/state/phase-progress.jsonl` stays repo-relative
+(already is).
 
 ## Global Design Guidance
 
@@ -157,8 +200,11 @@ Proof obligations for the plan:
 - **A1:** `git rev-parse --git-common-dir` from a linked worktree's cwd returns the shared main
   `.git`, whose parent is the canonical root. *Load-bearing for C1; verified by the worktree test.*
 - **A2:** Hooks are always invoked with a cwd inside (or under) the target repo, so the resolver
-  can find the git common dir. If not (cwd outside any repo), fallback-to-cwd preserves today's
-  behavior — acceptable, no regression.
+  can find the git common dir. If not (cwd outside any repo / git absent), the C-1-fixed resolver
+  returns `$cwd` (empty `--git-common-dir` → fallback), preserving today's behavior — no regression.
+  *Edge (m-1):* inside a **bare** repo `--git-common-dir` returns `.`, so the resolver returns the
+  bare dir's parent rather than falling back; practical impact is nil (ADK hooks never run in a bare
+  repo) and it never hard-fails, so this is documented, not guarded.
 - **A3:** Sourcing a sibling `lib-autodev-paths.sh` via `dirname "$0"` works under `run-hook.cmd`
   (which invokes `bash ${SCRIPT_DIR}/<name>`, so `$0` is the hook's own path). *Verified by the
   install-layout + a content test.*
