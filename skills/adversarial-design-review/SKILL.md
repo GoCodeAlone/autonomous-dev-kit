@@ -137,9 +137,7 @@ inherits the design's blast radius) and adds:
 6. **Surface options, not just objections.** For findings, propose a
    concrete fix or alternative. "This design assumes X" → "Alternative: state
    X explicitly, and add a fallback if X is false at runtime."
-7. **Write the report.** Format below. Commit verdict: PASS / FAIL.
-   Use `autodev:condensed-pipeline-writing` for report density unless the
-   user asked for prose.
+7. **Write AND commit the report.** Derive the path from the artifact filename: drop `.md`, then for `--phase=design` append `-review.md` (e.g. `…-doc-sync-design.md` → `…-doc-sync-design-review.md`); for `--phase=plan` append `-plan-review.md` (e.g. `2026-06-03-…-doc-sync.md` → `2026-06-03-…-doc-sync-plan-review.md`). This matches the existing `docs/plans/2026-05-31-session-owned-lock-claims-design-review.md` convention. The **lead** writes the report text the reviewer produced to that path and commits it alongside the artifact (the subagent has no git authority). Re-runs update the same single per-phase file (append a `## Cycle N` section across cycles); safe under sequential execution. Commit verdict: PASS / FAIL. Use `autodev:condensed-pipeline-writing` for report density unless the user asked for prose.
 
 ## Report format
 
@@ -151,13 +149,15 @@ inherits the design's blast radius) and adds:
 **Status:** PASS | FAIL
 
 **Findings (Critical):**
-- [class] [section/line]: <description>. Recommendation: <concrete fix>.
+- `D1` [class] [section/line]: <description>. Recommendation: <concrete fix>. _Resolution: <optional — filled once at end-state: commit SHA / `accepted — reason` / `false-positive`; omit if open>._
 
 **Findings (Important):**
-- [class] [section/line]: <description>. Recommendation: <concrete fix>.
+- `D2` [class] [section/line]: <description>. Recommendation: <concrete fix>. _Resolution: <optional>._
 
 **Findings (Minor):**
-- [class] [section/line]: <description>. Recommendation: <concrete fix>.
+- `D3` [class] [section/line]: <description>. Recommendation: <concrete fix>. _Resolution: <optional>._
+
+Design-phase finding IDs are `D1, D2, …`; plan-phase `P1, P2, …`. IDs are the durable anchor `post-merge-retrospective` correlates against; the optional `Resolution` is a scoring hint (retro falls back to downstream evidence when omitted). Each finding has a **stable finding ID** as its first token.
 
 **Bug-class scan transcript:**
 | Class | Result | Note |
@@ -273,6 +273,8 @@ Agent tool (general-purpose, model: balanced):
     Important finding either has a fix recommendation accepted by the
     author or is escalated as an open question. Otherwise FAIL.
 ````
+
+The reviewer returns the report text. **The lead commits it to the derived path** (drop `.md`, append `-review.md` for design or `-plan-review.md` for plan) — the subagent has no git authority.
 </host>
 
 <host: generic-subagent-capable>
@@ -292,6 +294,9 @@ mindset, ≥3 findings or full transcript, no reflexive approval.
 - `writing-plans` — `--phase=plan`, after plan doc is committed, before
   `alignment-check`.
 - Manual — user invokes against any artifact in `docs/plans/`.
+
+**Writes:**
+- `docs/plans/<artifact-stem>-design-review.md` (design phase) / `docs/plans/<artifact-stem>-plan-review.md` (plan phase) — committed report.
 
 **Calls:**
 - `brainstorming` — on FAIL during `--phase=design`, for revision.
