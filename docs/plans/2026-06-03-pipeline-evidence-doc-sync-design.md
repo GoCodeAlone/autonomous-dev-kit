@@ -12,10 +12,17 @@ Four issues, two themes, one root: the pipeline emits design/plan/review artifac
 
 **Theme A — retro evidence is broken:**
 - **#69:** `post-merge-retrospective` reads "adversarial-review reports committed in `docs/plans/`"
-  (SKILL.md:22, :33, :156). But `adversarial-design-review` only emits its report **inline**
-  (step 7 "Write the report" + the Dispatch subagent returns text). The committed file the retro
-  depends on is **never written** → phantom dependency. Every retro reconstructs findings from
-  revision notes/PR threads. Worsens under long/compacted context (transcript lost).
+  (SKILL.md:22, :33, :156). But `adversarial-design-review` does not **mandate** committing the
+  report — step 7 says "Write the report" and the Dispatch subagent returns text, with no
+  instruction to persist+commit it to a known path. *Nuance (adversarial review D1):* the practice
+  exists **ad-hoc** — exactly two committed review files exist today
+  (`docs/plans/2026-05-31-session-owned-lock-claims-design-review.md` + `-plan-review.md`) under
+  the convention `<stem>-design-review.md` / `<stem>-plan-review.md`. But because the skill never
+  mandates it, it happens for some features and not others, has **no stable finding IDs**, and the
+  retro cannot rely on the file existing. Result: most retros reconstruct findings from revision
+  notes/PR threads — worse under long/compacted context (transcript lost). The fix **systematizes
+  the existing ad-hoc practice** (mandate the commit, adopt the existing name, add stable IDs), it
+  does not invent a new artifact.
 - **#70:** retro tells the agent to run `tests/skill-activation-audit.sh` *"(this repo)"* — a
   **kit-dev-only** script absent in consumer repos → "Missed skill activations" table is "script
   does not exist" every time. Meanwhile the `record-activity` PostToolUse hook (shipped:
@@ -58,37 +65,55 @@ Four issues, two themes, one root: the pipeline emits design/plan/review artifac
 ### D1 — Committed adversarial-review report (#69, G1)
 
 `adversarial-design-review` step 7 + Dispatch + Report-format change:
-- After producing the report, **write it to `docs/plans/<artifact-stem>-adversarial-<phase>.md`**
-  (e.g. design `…-pipeline-evidence-doc-sync-design.md` → report
-  `…-pipeline-evidence-doc-sync-adversarial-design.md`; plan stem → `-adversarial-plan.md`) and
-  **commit it alongside** the artifact. The Dispatch subagent still produces the report text; the
-  lead writes+commits the returned text to the path.
+- After producing the report, **write it to the repo's existing convention path**
+  `docs/plans/<stem>-design-review.md` (design phase) or `docs/plans/<stem>-plan-review.md` (plan
+  phase), where `<stem>` is the design/plan filename without its `-design`/`<feature>` tail — i.e.
+  the same stem the existing `2026-05-31-session-owned-lock-claims-design-review.md` uses — and
+  **commit it alongside** the artifact. *(Adopting the existing name, not a new `-adversarial-*`
+  one — adversarial review D1.)* The Dispatch subagent produces the report text; the **lead**
+  writes+commits it (the subagent has no git authority — matches the existing Dispatch pattern).
 - **Stable finding IDs:** design-phase findings `D1, D2, …`; plan-phase `P1, P2, …`. Each finding
-  line is prefixed with its ID.
-- New per-finding **`Resolution:`** field, initially `pending`. Filled during the revision loop /
-  execution with: a commit SHA, `accepted — <reason>`, or `false-positive`. This is what lets the
-  retro auto-correlate a finding to what resolved it.
-- Idempotent across revision cycles: re-running the review on a revised artifact **overwrites**
-  the same report file (latest state), not appends a new file per cycle.
+  row carries its ID as the first column. This is the durable anchor the retro correlates against.
+- **Optional `Resolution` column**, filled **once at end-state** (not mutated every revision
+  cycle): a commit SHA, `accepted — <reason>`, or `false-positive`; left blank/`pending` if
+  unresolved. D2 wires retro Step 2 to read it as a *hint* (falling back to downstream evidence
+  when blank), so the field has a real consumer at near-zero maintenance.
+- Idempotent: re-running the review on a revised artifact **overwrites** the same report file
+  (latest state), not a new file per cycle. Safe under sequential execution (the default); no
+  lock needed at this scale.
+- **Back-compat:** pre-v6.4.0 review files (no finding IDs, older table shape) remain valid; the
+  retro reads both. **Dogfood caveat:** during *this* feature's own pipeline the skill text hasn't
+  changed yet, so the lead emulates D1 by hand (writing+committing each phase's review file under
+  the convention) until the task that edits the skill lands — implementing agents must not assume
+  the skill auto-writes the file before that task.
 
 ### D2 — Retro reads committed report + activation jsonl (#70, G2)
 
 `post-merge-retrospective`:
-- Step 2 (score findings): read the committed `…-adversarial-<phase>.md` report(s). If absent
-  (ad-hoc PR or pre-v6.4.0 branch), state "no committed adversarial report; reconstructed from
-  revision history" — i.e. the *current* behavior becomes the explicit fallback, not the default.
+- Step 2 (score findings): read the committed `…-design-review.md` / `…-plan-review.md` report(s).
+  Use each finding's stable ID; read its optional `Resolution` column as a scoring hint, falling
+  back to downstream evidence (code-review threads, CI) when blank. If the report is absent (ad-hoc
+  PR or pre-mandate branch), state "no committed review report; reconstructed from revision
+  history" — i.e. the *current* behavior becomes the explicit fallback, not the default.
 - Step 5 (score activations): **primary source = `.claude/autodev-state/in-progress.jsonl`**
-  (written by `record-activity` in any repo). Cross-check `--phase=design|plan` via the `args`
-  field of `skill` entries. `tests/skill-activation-audit.sh` demoted to "(kit-dev convenience;
-  not present in consumer repos)". If the jsonl is absent → emit "activation log unavailable" rows,
+  (written by `record-activity` in any repo). Read phase from the `args` field of **`ev:"skill"`**
+  entries (the lead's `Skill` invocation carries `args:"--phase=design|plan …"`); the
+  Agent-dispatched reviewer subagent is a separate `ev:"agent"` record without a phase and is
+  ignored for phase attribution. If the jsonl is absent → emit "activation log unavailable" rows,
   **never** "script does not exist".
-- Integration "Reads" list updated to match.
+- **Three edit sites, same change (adversarial review D2):** Step 5 process text **and** the
+  output-format template (`## Missed skill activations`, SKILL.md:99, currently "Pull from
+  `tests/skill-activation-audit.sh`") **and** the `**Reads:**` integration bullet must all demote
+  the kit-local script to "(kit-dev convenience; absent in consumer repos)". Fixing only Step 5
+  would leave the broken instruction re-embedded in every future retro's format section.
 
 ### D3 — Pre-PR doc-reconciliation gate (#71 + #72a, G3)
 
 `finishing-a-development-branch` new **Step 1e: Doc-Reconciliation Check** (after 1d Scope
-Completeness, before Step 2). Triggers when the PR commits any design doc, README, reference doc,
-or example artifact. The agent verifies, for committed docs/examples in this PR:
+Completeness, before Step 2). **Trigger (narrowed, adversarial review D6):** fires only when the
+PR's diff commits a **design doc, README/reference doc, or example artifact** — skip entirely for
+code-only / test-only diffs, so it's rare and cheap. The agent verifies, for those committed
+docs/examples:
 - **(a) Scope (forward-ref, #71):** every behavior/identifier described is either in *this PR's*
   manifest scope, OR explicitly labeled `Planned (PR #N)` / `Planned — later PR`. Unlabeled
   forward references = finding → label them or move the prose to the later PR.
@@ -96,10 +121,14 @@ or example artifact. The agent verifies, for committed docs/examples in this PR:
   flags, env vars, command invocations, DDL/code snippets, format strings — match the identifiers
   the code on this branch actually uses (and the repo's naming convention). Mismatch = finding →
   reconcile the doc to the built code.
-- Checklist gate (agent reads the diff + greps identifiers), **not** an automated scanner. On a
-  finding in autonomous mode: fix the doc in-branch before PR (in-scope doc edit, no manifest
-  change). This is distinct from scope-lock's assumption-backport (disproved assumptions) — this
-  is routine accuracy reconciliation.
+- Checklist gate (agent reads the diff + greps identifiers), **not** an automated scanner (honors
+  the user's LIGHT choice for #71/#72). On a finding in autonomous mode: fix the doc in-branch
+  before PR (in-scope doc edit, no manifest change). Distinct from scope-lock's
+  assumption-backport (disproved assumptions) — this is routine accuracy reconciliation.
+- **Accountability token (anti-trap, adversarial review D6):** the agent MUST emit a one-line
+  `Doc-reconciliation: clean` or `Doc-reconciliation: N item(s) fixed — <summary>` into the PR
+  body. This converts a judgment step that could silently self-pass into a visible record
+  pr-monitoring, the human reviewer, and the retro can see — without a script.
 
 ### D4 — Plan-phase naming-convention checklist row (#72b, G4)
 
@@ -107,8 +136,9 @@ or example artifact. The agent verifies, for committed docs/examples in this PR:
 **Identifier / naming-convention match** — "config keys, flags, env vars, and command/code
 examples in the plan match the repo's established naming convention and the identifiers the code
 will actually use (grep the repo for the convention; a plan showing `snake_case` keys where the
-codebase uses `camelCase` = finding)." Catches the drift in D3(b) **before a line of code is
-written**, which is cheaper than reconciling after.
+codebase uses `camelCase` = finding). **Distinct from `Config-validation schema rules`** (which
+checks tool-enforced schema invariants); this row checks human naming-convention consistency."
+Catches the drift in D3(b) **before a line of code is written**, cheaper than reconciling after.
 
 ## Global Design Guidance
 
@@ -147,15 +177,24 @@ The cross-component boundary here is **skill → hook → state-file → retro**
 - `tests/skill-cross-refs.sh` and `tests/skill-content-grep.sh` are the kit's own CI gates over
   skill markdown — all skill edits must keep cross-references resolvable and host-tokens inside
   `<host:>` blocks. The plan includes running both before PR.
-- **Dogfood:** this very feature runs through the pipeline, so D1 (committed report) is exercised
-  on its own design + plan adversarial reviews — the first real artifacts of the new behavior.
+- **Dogfood (with caveat, adversarial review D3):** this feature runs through the pipeline, so the
+  *practice* of committing the review report is exercised on its own design+plan reviews. But the
+  skill text edits don't take effect until their task lands — so for this feature the lead
+  **manually** writes+commits each `…-design-review.md` / `…-plan-review.md` (already done for the
+  design phase) rather than the skill doing it automatically. The skill-automated path is first
+  exercised by the *next* feature after v6.4.0.
+- **CI skill gates:** `tests/skill-cross-refs.sh` + `tests/skill-content-grep.sh` (the kit's own
+  markdown gates) run as a plan verification task before PR, so new step/path references resolve
+  and host-tokens stay inside `<host:>` blocks.
 
 ## Assumptions
 
 - **A1:** `record-activity` fires in consumer repos (plugin-level PostToolUse hook). *Evidence:*
   `hooks/hooks.json:53` + live entry this session. **Load-bearing for D2.**
 - **A2:** Skill-invoked gates are what the retro needs to score; gates invoked as non-Skill
-  sub-steps (rare) not appearing in the jsonl is acceptable (graceful-degrade covers it).
+  sub-steps (rare) not appearing in the jsonl is acceptable (graceful-degrade covers it). Phase
+  attribution comes only from `ev:"skill"` entries' `args` (the lead's `Skill` call); the
+  Agent-dispatched reviewer subagent's `ev:"agent"` record has no phase and is ignored for it.
 - **A3:** The adversarial Dispatch subagent can return report text the lead commits; the lead
   (not the subagent) owns the git write. *Matches existing Dispatch pattern.*
 - **A4:** Writing one report file per phase per feature (overwritten across revision cycles) is
