@@ -638,7 +638,7 @@ PLAN
   jq -nc '{ev:"lock",pl:"example.md",st:"Locked 2026-05-25T00:00:00Z",h:"abc"}' \
     > "$tmp/.claude/autodev-state/in-progress.jsonl"
 
-  hooks/scope-lock-complete "$tmp/docs/plans/example.md" --evidence "tests pass" >/dev/null
+  ( cd "$tmp" && "$REPO_ROOT/hooks/scope-lock-complete" docs/plans/example.md --evidence "tests pass" >/dev/null )
 
   if ! grep -q '\*\*Status:\*\* Complete ' "$tmp/docs/plans/example.md"; then
     fail "scope-lock-complete: expected plan status to be Complete"
@@ -704,7 +704,7 @@ test_scope_lock_complete_requires_lock_file() {
 PLAN
 
   set +e
-  output="$(hooks/scope-lock-complete "$tmp/docs/plans/example.md" --evidence "tests pass" 2>&1)"
+  output="$( cd "$tmp" && "$REPO_ROOT/hooks/scope-lock-complete" docs/plans/example.md --evidence "tests pass" 2>&1)"
   status=$?
   set -e
 

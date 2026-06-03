@@ -27,4 +27,9 @@ Task tool (general-purpose):
     spec-compliance gate.
     DM team-lead that the task is ready for merge, including the branch
     name and latest commit, when CI is green and reviewer is at SHIP-IT.
+
+    End your final message with a **Writes:** section listing every file
+    you created or modified as a repo-relative path (e.g.
+    `hooks/record-activity — modified`). Flag out-of-tree writes with
+    `OUT-OF-TREE: <absolute path>`. See `agents/team-conventions.md`.
 ```

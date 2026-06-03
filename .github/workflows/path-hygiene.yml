@@ -1,0 +1,13 @@
+name: Path Hygiene
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  path-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No operator-home paths in committed artifacts
+        run: bash tests/no-machine-paths.sh

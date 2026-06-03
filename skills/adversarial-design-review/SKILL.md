@@ -139,6 +139,7 @@ inherits the design's blast radius) and adds:
    concrete fix or alternative. "This design assumes X" → "Alternative: state
    X explicitly, and add a fallback if X is false at runtime."
 7. **Write AND commit the report.** Derive the path from the artifact filename: drop `.md`, then for `--phase=design` append `-review.md` (e.g. `…-doc-sync-design.md` → `…-doc-sync-design-review.md`); for `--phase=plan` append `-plan-review.md` (e.g. `2026-06-03-…-doc-sync.md` → `2026-06-03-…-doc-sync-plan-review.md`). This matches the existing `docs/plans/2026-05-31-session-owned-lock-claims-design-review.md` convention. The **lead** writes the report text the reviewer produced to that path and commits it alongside the artifact (the subagent has no git authority). Re-runs update the same single per-phase file (append a `## Cycle N` section across cycles); safe under sequential execution. Commit verdict: PASS / FAIL. Use `autodev:condensed-pipeline-writing` for report density unless the user asked for prose.
+   Committed artifacts use repo-relative paths; illustrate machine paths only with `<placeholder>` segments (e.g. `/Users/<name>/…`); never a literal operator-home path. Enforced by `tests/no-machine-paths.sh`.
 
 ## Report format
 

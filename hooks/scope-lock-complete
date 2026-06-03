@@ -71,7 +71,9 @@ if ! grep -q '\*\*Status:\*\* Locked' "$plan_abs" 2>/dev/null; then
 fi
 
 plan_dir=$(cd "$(dirname "$plan_abs")" && pwd)
-repo_root=$(cd "${plan_dir}/../.." && pwd)
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || true
+declare -f autodev_repo_root >/dev/null 2>&1 || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
+ADK_ROOT="$(autodev_repo_root "$PWD")"
 plan_name=$(basename "$plan_abs")
 plan_rel="docs/plans/${plan_name}"
 lock_file="${plan_abs}.scope-lock"
@@ -134,9 +136,9 @@ validate_jsonl() {
     done < "$file"
 }
 
-session_locks_file="${repo_root}/.claude/autodev-state/session-locks.jsonl"
-in_progress_file="${repo_root}/.claude/autodev-state/in-progress.jsonl"
-progress_dir="${repo_root}/.autodev/state"
+session_locks_file="${ADK_ROOT}/.claude/autodev-state/session-locks.jsonl"
+in_progress_file="${ADK_ROOT}/.claude/autodev-state/in-progress.jsonl"
+progress_dir="${ADK_ROOT}/.autodev/state"
 progress_file="${progress_dir}/phase-progress.jsonl"
 
 ensure_regular_or_absent() {
@@ -186,7 +188,10 @@ prune_jsonl() {
             return 1
         }
         if [ -n "$pl" ]; then
-            resolved=$(canonical_path_from_base "$repo_root" "$pl" 2>/dev/null || true)
+            # Compare against $PWD (the same base plan_abs was resolved with), NOT $ADK_ROOT.
+            # State FILES live at $ADK_ROOT (shared), but entry matching must use the invoking
+            # base so a worktree completion still prunes its own entry (code-review Critical).
+            resolved=$(canonical_path_from_base "$PWD" "$pl" 2>/dev/null || true)
             [ "$resolved" = "$plan_abs" ] && continue
         fi
         printf '%s\n' "$line" >> "$tmp"

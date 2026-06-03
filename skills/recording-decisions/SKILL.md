@@ -64,6 +64,7 @@ Skip if no future maintainer would ask "why?"
 - Proposal/future tense → design doc until accepted.
 - Editing accepted ADR body → write superseding ADR.
 - No alternatives → not an ADR.
+- Committed artifacts use repo-relative paths; illustrate machine paths only with `<placeholder>` segments (e.g. `/Users/<name>/…`); never a literal operator-home path. Enforced by `tests/no-machine-paths.sh`.
 
 ## Integration
 

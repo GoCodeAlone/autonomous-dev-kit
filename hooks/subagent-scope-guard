@@ -25,6 +25,9 @@ hook_input=$(cat || true)
 
 cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
 [ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || true
+declare -f autodev_repo_root >/dev/null 2>&1 || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
+ADK_ROOT="$(autodev_repo_root "$cwd_dir")"
 transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
 session_key=""
 [ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
@@ -79,7 +82,7 @@ if command -v git >/dev/null 2>&1; then
         # exposes transcript_path; otherwise (host has no session identity)
         # we fall back to workspace-wide scan.
         find_session_locked_plans() {
-            local state_file="${cwd_dir}/.claude/autodev-state/session-locks.jsonl"
+            local state_file="${ADK_ROOT}/.claude/autodev-state/session-locks.jsonl"
             [ -f "$state_file" ] || return 0
             jq -r --arg session "$session_key" \
                 'select(.ev == "session-lock" and .session == $session) | .pl // empty' \
