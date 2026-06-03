@@ -40,3 +40,13 @@
 3. Placeholder-aware regex + `path-hygiene-allow` sentinel — **taken** (C-2).
 
 **Verdict reasoning:** Two Criticals (resolver `/`-return + self-referential gate trap) + three Importants (incomplete fallback guard, CI paths-filter false guarantee, retrofit list wrong by 3) all had concrete low-effort fixes, now in the design text. The git primitive (`--git-common-dir`) is correct; the main repo + linked-worktree path is verified. Re-run to confirm convergence.
+
+## Cycle 2 (convergence) — PASS
+
+All cycle-1 findings (C-1, C-2, I-1, I-2, I-3, m-1..m-4) verified genuinely reflected in the revised design text; resolver traced correct for all 4 cwd cases with no `set -u` hazard; gate regex empirically placeholder-aware; live grep confirms exactly 12 hooks; `declare -f` safe (all 12 hooks are `#!/usr/bin/env bash`). **Converged.**
+
+Two new Minors → plan-time implementation notes (not design blockers):
+- **scope-lock-claim dead-code:** it references `session-locks.jsonl` in a read path; retrofit should anchor the read it actually performs and not add an unused `STATE_DIR`. Plan: apply the resolver only where the file path is genuinely used.
+- **`local` in the lib:** `cwd`/`_gcd`/`_root` are function-global (no `local`). All consumers are bash so `local` is available; the lib will either use `local` or carry a comment that the names are intentionally global + assigned-before-read (so a future reorder can't break `set -u`). Plan decides; either is safe.
+
+**Final design verdict: PASS @ cycle 2.** Proceed to writing-plans.
