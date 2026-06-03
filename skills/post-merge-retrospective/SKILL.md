@@ -36,6 +36,7 @@ If the PR was opened ad-hoc (no design / plan in `docs/plans/`), this skill exit
    - Any ADRs cited from the design or plan
 
 2. **Score each adversarial-review finding.**
+   Derive the report path by the **same deterministic rule as D1**: take the artifact filename, drop `.md`, then design → append `-review.md`, plan → append `-plan-review.md` (e.g. `…-doc-sync-design.md` → `…-doc-sync-design-review.md`; `2026-06-03-…-doc-sync.md` → `2026-06-03-…-doc-sync-plan-review.md`). Read the committed `…-design-review.md` / `…-plan-review.md` report(s). For each finding, use its stable ID; read the optional `Resolution` column as a scoring hint, **falling back to downstream evidence (code-review threads, CI) when blank or when the report is an old no-ID format**. If the report is absent → "no committed review report; reconstructed from revision history" (most pre-v6.4.0 features have none).
    For every finding raised in either phase's adversarial-review report, classify it as one of:
    - **Prescient** — the finding called out something that turned out to matter (showed up as a code-review comment, CI failure, follow-up bug fix, or revert).
    - **Resolved upfront** — the finding was addressed during plan revision and prevented an issue downstream (no code-review comment / CI failure traces back to it).
@@ -49,9 +50,11 @@ If the PR was opened ad-hoc (no design / plan in `docs/plans/`), this skill exit
    For each unique CI failure on the branch, ask: was this caught by `verification-before-completion` / `runtime-launch-validation` / something else, or did it slip past every local gate? Slips are gate misses too.
 
 5. **Score skill activations.**
-   Read `.claude/autodev-state/in-progress.jsonl` (if present in the repo's `.claude/` directory) and verify the expected pipeline ran. The canonical chain documented in `skills/using-autodev/SKILL.md` is:
+   **Primary source: `.claude/autodev-state/in-progress.jsonl`** (written by the `record-activity` PostToolUse hook in any repo — not kit-dev-only). Read phase from the `args` field of `ev:"skill"` entries (the lead's `Skill` invocation carries `args:"--phase=design|plan …"`); the Agent-dispatched reviewer subagent is a separate `ev:"agent"` record without a phase and is ignored for phase attribution. If the jsonl is absent → emit "activation log unavailable" rows, never "script does not exist". `tests/skill-activation-audit.sh` (kit-dev convenience; absent in consumer repos) may be used to cross-check in the kit repo itself — it reports each skill once, so cross-check phase counts against the jsonl's `args=--phase=<design|plan>` entries when both phases are required.
+   Verify the expected pipeline ran. The canonical chain documented in `skills/using-autodev/SKILL.md` is:
    `brainstorming → adversarial-design-review (design) → writing-plans → adversarial-design-review (plan) → alignment-check → subagent-driven-development → finishing-a-development-branch → pr-monitoring → post-merge-retrospective`.
-   For each gate that was *expected* to fire and didn't, that's a missed-activation. Use `tests/skill-activation-audit.sh` (this repo) to confirm what fired — note that the audit script reports each skill once even when invoked twice (e.g., adversarial-design-review for both phases), so cross-check phase counts against the JSONL `args=--phase=<design|plan>` entries when both phases are required.
+   For each gate that was *expected* to fire and didn't, that's a missed-activation.
+   When the merged PR's diff touched docs/examples, record `finishing Step 1e` as fired iff a `Doc-reconciliation:` line is present in the PR body, else `unverified`. If the diff touched no docs/examples, record no row (Step 1e legitimately did not fire).
 
 6. **Backfeed project design guidance.**
    Invoke `autodev:project-design-guidance`. If the merged work reveals a
@@ -96,13 +99,14 @@ If there are zero gate misses, write: "No gate misses this PR. All downstream is
 
 ## Missed skill activations
 
-Pipeline gates expected to fire (per `using-autodev`): list any that didn't. Pull from `tests/skill-activation-audit.sh`.
+Pipeline gates expected to fire (per `using-autodev`): list any that didn't. Read from `.claude/autodev-state/in-progress.jsonl` (`ev:"skill"` entries; `tests/skill-activation-audit.sh` is a kit-dev convenience only, absent in consumer repos).
 
 | Gate | Fired? | Notes |
 |---|---|---|
 | brainstorming | yes | |
 | adversarial-design-review (design) | yes | |
 | adversarial-design-review (plan) | no | <why — e.g., manual override; deferred to alignment-check> |
+| finishing Step 1e (doc-reconciliation) | yes/unverified | only when the diff touched docs/examples |
 | ... | ... | |
 
 ## What worked
@@ -153,11 +157,11 @@ The retro is intentionally short. Long retros don't get read. The format above f
   guidance change.
 
 **Reads:**
-- `docs/plans/` (design, plan, adversarial-review reports)
+- `docs/plans/` (design, plan, adversarial-review reports — reports now committed by `adversarial-design-review` per the deterministic path rule)
 - `decisions/` (ADRs cited from the design / plan)
 - `gh pr view`, `gh pr review-comments`, `gh run list`
 - `.claude/autodev-state/in-progress.jsonl` (if present)
-- `tests/skill-activation-audit.sh` (this repo)
+- `tests/skill-activation-audit.sh` (kit-dev convenience; absent in consumer repos)
 - `docs/design-guidance.md` or equivalent project guidance, if present
 
 **Writes:**
