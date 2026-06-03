@@ -6,12 +6,16 @@ on:
       - 'skills/**'
       - 'agents/**'
       - 'tests/skill-content-grep.sh'
+      - 'tests/pipeline-evidence-doc-sync.sh'
+      - 'tests/skill-cross-refs.sh'
       - '.github/workflows/skill-content-check.yml'
   pull_request:
     paths:
       - 'skills/**'
       - 'agents/**'
       - 'tests/skill-content-grep.sh'
+      - 'tests/pipeline-evidence-doc-sync.sh'
+      - 'tests/skill-cross-refs.sh'
       - '.github/workflows/skill-content-check.yml'
   workflow_dispatch:
 
@@ -25,3 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check skill content for host-specific tokens
         run: bash tests/skill-content-grep.sh
+      - name: Pipeline evidence + doc-sync contracts
+        run: bash tests/pipeline-evidence-doc-sync.sh
+      - name: Skill cross-references resolve
+        run: bash tests/skill-cross-refs.sh
