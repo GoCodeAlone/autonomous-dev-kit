@@ -42,7 +42,7 @@
 **Files:**
 - Create: `tests/pipeline-evidence-doc-sync.sh`
 
-**Step 1: Write the failing test.** Create a bash test (mirroring the style of `tests/skill-content-grep.sh` — `pass()/fail()`, `failures` counter, non-zero exit on any fail) with these assertions against the repo's skill files:
+**Step 1: Write the failing test.** Create a bash test (mirroring the `pass()/fail()` + counter style of `tests/hook-contracts.sh`, non-zero exit on any fail) with these assertions against the repo's **skill** files (greps target `skills/…`, never `docs/plans/…`, so the plan's own design docs can't false-match). The assertions are written to be genuinely RED before Tasks 2–5 and GREEN after (plan-review P1: avoid substring matches that pass against pre-existing prose like "committed"):
 
 ```bash
 #!/usr/bin/env bash
@@ -64,17 +64,23 @@ hasE(){ grep -qiE "$2" "$1"; }      # regex
 hasE "$ADR" '(-design-review\.md|-plan-review\.md)' \
   && pass "#69 ADR cites the <stem>-design-review.md/-plan-review.md convention" \
   || bad  "#69 ADR missing committed-report convention path"
-has "$ADR" "commit" \
-  && pass "#69 ADR instructs committing the report" \
-  || bad  "#69 ADR does not instruct committing the report"
-hasE "$ADR" '\bD1\b|finding ID|stable .*ID' \
+# P1: assert the SPECIFIC new mandate wording, not the ambient word "commit"
+has "$ADR" "Write AND commit the report" \
+  && pass "#69 ADR mandates writing+committing the report" \
+  || bad  "#69 ADR does not mandate writing+committing the report"
+hasE "$ADR" 'stable finding ID|stable .*ID' \
   && pass "#69 ADR defines stable finding IDs" \
   || bad  "#69 ADR missing stable finding IDs"
+# P4: guard the load-bearing D1<->D2 path contract — retro must cite the same derivation
+hasE "$RETRO" 'same deterministic rule|-plan-review\.md' \
+  && pass "#69/#70 retro derives the report path by the same rule (D1<->D2 contract)" \
+  || bad  "#69/#70 retro missing the shared path-derivation rule"
 
-# --- #70 (D2): retro reads the jsonl; script demoted, NOT a hard dep ---
-has "$RETRO" ".claude/autodev-state/in-progress.jsonl" \
-  && pass "#70 retro reads in-progress.jsonl" \
-  || bad  "#70 retro does not read in-progress.jsonl"
+# --- #70 (D2): retro reads the jsonl as PRIMARY; script demoted, NOT a hard dep ---
+# P1: assert the jsonl is the PRIMARY source (only true after Task 4), not merely mentioned
+hasE "$RETRO" 'primary source.*in-progress\.jsonl|in-progress\.jsonl.*primary' \
+  && pass "#70 retro makes in-progress.jsonl the primary activation source" \
+  || bad  "#70 retro does not promote in-progress.jsonl to primary"
 # The format template must NOT instruct 'Pull from tests/skill-activation-audit.sh'
 grep -qiE 'Pull from .*skill-activation-audit\.sh' "$RETRO" \
   && bad  "#70 retro STILL instructs 'Pull from tests/skill-activation-audit.sh' (line ~99 not demoted)" \
@@ -126,15 +132,13 @@ git commit -m "test: regression guard for pipeline evidence + doc-sync (#69 #70 
 **Step 1:** In **Process step 7** ("Write the report"), replace the inline-only instruction with the mandate to persist+commit, stating the **deterministic path rule** verbatim:
 > 7. **Write AND commit the report.** Derive the path from the artifact filename: drop `.md`, then for `--phase=design` append `-review.md` (e.g. `…-doc-sync-design.md` → `…-doc-sync-design-review.md`); for `--phase=plan` append `-plan-review.md` (e.g. `2026-06-03-…-doc-sync.md` → `2026-06-03-…-doc-sync-plan-review.md`). This matches the existing `docs/plans/2026-05-31-session-owned-lock-claims-design-review.md` convention. The **lead** writes the report text the reviewer produced to that path and commits it alongside the artifact (the subagent has no git authority). Re-runs update the same single per-phase file (append a `## Cycle N` section across cycles); safe under sequential execution.
 
-**Step 2:** In the **Report format**, change the Findings lines to carry **stable IDs** and an optional **Resolution** column. Use a table so IDs + Resolution are columnar:
-> **Findings:**
-> | id | sev | class | loc | issue | recommendation | resolution |
-> |---|---|---|---|---|---|---|
-> | D1 | Critical | … | … | … | … | _(optional; filled once at end-state: commit SHA / `accepted — reason` / `false-positive`; blank if open)_ |
+**Step 2:** In the **Report format**, keep the existing three `**Findings (Critical|Important|Minor):**` sections **unchanged in structure** (so the PASS/FAIL semantics and Dispatch "Required output" blocks that key off "Critical findings"/"Important findings" keep working verbatim — plan-review P6: no table conversion, no ripple). Add only: each finding bullet is **prefixed with a stable finding ID** and may carry an optional inline resolution. Update the format example lines to:
+> **Findings (Critical):**
+> - `D1` [class] [section/line]: <description>. Recommendation: <concrete fix>. _Resolution: <optional — filled once at end-state: commit SHA / `accepted — reason` / `false-positive`; omit if open>._
 >
-> Design-phase IDs are `D1, D2, …`; plan-phase IDs are `P1, P2, …`. The `resolution` column is optional and filled once at end-state — `post-merge-retrospective` reads it as a scoring hint, falling back to downstream evidence when blank.
+> Add a one-line note under the format: "Design-phase finding IDs are `D1, D2, …`; plan-phase `P1, P2, …`. IDs are the durable anchor `post-merge-retrospective` correlates against; the optional `Resolution` is a scoring hint (retro falls back to downstream evidence when omitted)." The literal phrase **"stable finding ID"** must appear (the Task-1 test asserts it).
 
-(Keep the existing `Bug-class scan transcript`, `Options`, and `Verdict reasoning` sections unchanged.)
+(Keep the `Bug-class scan transcript`, `Options`, and `Verdict reasoning` sections, and the PASS/FAIL semantics section, unchanged.)
 
 **Step 3:** In **"Dispatching the reviewer agent"** output instructions, add one line: the reviewer returns the report text; **the lead commits it to the derived path** (so the subagent isn't asked to do git).
 
@@ -240,11 +244,14 @@ git commit -m "feat(finishing): Step 1e doc-reconciliation gate, body + autonomo
 **Files:**
 - Modify: `.github/workflows/skill-content-check.yml` (add a step running the new test + add it to the `paths` filters)
 
-**Step 1:** In `skill-content-check.yml`, add `tests/pipeline-evidence-doc-sync.sh` to both `push.paths` and `pull_request.paths`, and add a step after the existing content-grep step:
+**Step 1:** In `skill-content-check.yml`, add `tests/pipeline-evidence-doc-sync.sh` **and** `tests/skill-cross-refs.sh` to both `push.paths` and `pull_request.paths`, and add two steps after the existing content-grep step (plan-review P2: `skill-cross-refs.sh` already exists but was local-only — wire it into CI for free while the workflow is open):
 ```yaml
       - name: Pipeline evidence + doc-sync contracts
         run: bash tests/pipeline-evidence-doc-sync.sh
+      - name: Skill cross-references resolve
+        run: bash tests/skill-cross-refs.sh
 ```
+*(If `skill-cross-refs.sh` surfaces a pre-existing unresolved reference unrelated to this PR, do not expand scope to fix unrelated skills — instead keep it local-only for this PR and note the pre-existing failure in the PR body. Only wire it into CI if it passes clean on the current tree.)*
 
 **Step 2: Run the FULL local gate** (all must be green now that Tasks 2–5 landed):
 ```bash
