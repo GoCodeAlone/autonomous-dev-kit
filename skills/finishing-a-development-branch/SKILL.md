@@ -21,8 +21,9 @@ When running in the autonomous pipeline (invoked from subagent-driven-developmen
 
 1. **Verify tests pass** — same as manual mode, abort if failing
 2. **Run Step 1d (Scope Completeness Check)** — see below. This is a mandatory gate in autonomous mode. The agent MUST NOT silently collapse N planned PRs into 1, nor declare success on a partial scope. If Step 1d surfaces a failure, the autonomous pipeline halts and asks the user.
-3. **Skip option presentation** — go directly to PR creation
-4. **For every PR row in the manifest's PR Grouping table, create one PR.** The manifest is the contract. If the table has 3 rows, the autonomous run produces 3 PRs, each pointing at the branch named in the row. Do NOT collapse rows — collapsing is the exact failure mode `skills/scope-lock/SKILL.md` defends against. Per-PR steps:
+3. **Run Step 1e (Doc-Reconciliation Check)** — conditional on the diff containing a design/reference doc or example artifact. See below.
+4. **Skip option presentation** — go directly to PR creation
+5. **For every PR row in the manifest's PR Grouping table, create one PR.** The manifest is the contract. If the table has 3 rows, the autonomous run produces 3 PRs, each pointing at the branch named in the row. Do NOT collapse rows — collapsing is the exact failure mode `skills/scope-lock/SKILL.md` defends against. Per-PR steps:
    ```bash
    feature_branch="<feature-branch>"
    feature_name="<feature-name>"
@@ -63,8 +64,8 @@ When running in the autonomous pipeline (invoked from subagent-driven-developmen
    EOF
    )"
    ```
-5. **Invoke pr-monitoring** — spawn a background monitor for all PRs created in this session; prefer a single agent covering all PRs to avoid GitHub API rate limits, but one agent per PR is acceptable if the PRs are on unrelated codebases or a previous shared monitor was rate-limited
-6. **Report PR URLs** — output every PR link for the user (one per row in the manifest's PR Grouping table)
+6. **Invoke pr-monitoring** — spawn a background monitor for all PRs created in this session; prefer a single agent covering all PRs to avoid GitHub API rate limits, but one agent per PR is acceptable if the PRs are on unrelated codebases or a previous shared monitor was rate-limited
+7. **Report PR URLs** — output every PR link for the user (one per row in the manifest's PR Grouping table)
 
 **Do NOT:**
 - Present the 4-option menu in autonomous mode
@@ -154,7 +155,21 @@ Action:
 - **PR count mismatch (autonomous mode):** if the manifest expects N PRs but the branch layout produced fewer, the agent must split the branch via `git rebase --onto` per the manifest's grouping table — NOT collapse the manifest. Collapsing N planned PRs into 1 is exactly the failure mode `scope-lock` exists to prevent.
 - **Locked-hash mismatch:** the manifest has been edited after the lock. Surface the diff and stop. The user must either revert the edit or go through the amendment path (`recording-decisions` + re-run alignment-check).
 
-Do not proceed past Step 1d on any failure without explicit user direction. There is no "demo mode" — see the anti-patterns in `skills/scope-lock/SKILL.md`.
+Do not proceed past Step 1d on any failure without explicit user direction. There is no "demo mode" — see the anti-patterns in `skills/scope-lock/SKILL.md`. Continue to Step 1e.
+
+### Step 1e: Doc-Reconciliation Check
+
+**Trigger:** the PR's diff commits a design doc, reference/standards doc, or example artifact that describes the feature's behavior. Skip for code-only / test-only diffs. (A doc with no corresponding `docs/plans/` design/plan trivially passes `clean`.)
+
+For each such committed doc/example, verify:
+- **(a) Scope (forward-ref, #71):** every behavior/identifier it describes is in *this PR's* manifest scope, OR explicitly labeled `Planned (PR #N)` / `Planned — later PR`. Unlabeled forward references = finding → label them or move the prose to the later PR.
+- **(b) Identifier drift (#72):** concrete identifiers (config keys, flags, env vars, command invocations, DDL/code snippets, format strings) match the identifiers the code on this branch actually uses + the repo's naming convention. Mismatch = finding → reconcile the doc to the built code.
+
+This is a checklist gate (read the diff, grep identifiers), **not** an automated scanner. On a finding in autonomous mode, fix the doc in-branch before PR (in-scope doc edit, no manifest change). Distinct from `scope-lock`'s assumption-backport (which is for *disproved assumptions*) — this is routine accuracy reconciliation.
+
+**Accountability token:** emit one line into the PR body — `Doc-reconciliation: clean` or `Doc-reconciliation: N item(s) fixed — <summary>` — so pr-monitoring, the human reviewer, and `post-merge-retrospective` (Step 5 missed-activation row) can confirm the gate ran without a script.
+
+Continue to Step 2.
 
 ### Step 2: Determine Base Branch
 
