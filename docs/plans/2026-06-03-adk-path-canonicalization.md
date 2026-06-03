@@ -30,7 +30,7 @@
 
 | PR # | Title | Tasks | Branch |
 |------|-------|-------|--------|
-| 1 | ADK path canonicalization + write-location transparency + artifact hygiene (v6.5.0) | Task 1–10 | feat/adk-path-canonicalization |
+| 1 | ADK path canonicalization + write-location transparency + artifact hygiene (v6.5.0) | Task 1, Task 2, Task 3, Task 4, Task 5, Task 6, Task 7, Task 8, Task 9, Task 10 | feat/adk-path-canonicalization |
 
 **Status:** Draft
 
@@ -234,15 +234,16 @@ if [ "$hits" -eq 0 ]; then echo "PASS: no operator-home machine paths in committ
 [ "$hits" -eq 0 ]
 ```
 
-**Step 2: Prove RED on a seeded leak + GREEN on placeholder (revert-restore):**
+**Step 2: Prove RED on a seeded leak + GREEN on placeholder (revert-restore).** Build the probe
+path with `printf` so this plan file itself stays gate-clean (the literal never appears here):
 ```bash
-echo '/Users/realname/secret' > docs/_leak_probe.md
+printf '/Users/%s/secret\n' realuser > docs/_leak_probe.md   # real-looking at runtime
 bash tests/no-machine-paths.sh; test $? -ne 0 && echo "OK: catches real leak"
-echo '/Users/<name>/x' > docs/_leak_probe.md   # placeholder
-bash tests/no-machine-paths.sh; # this probe line alone is fine, but other real leaks may remain
+printf '/Users/<name>/x\n' > docs/_leak_probe.md             # angle-bracket placeholder
+bash tests/no-machine-paths.sh; echo "placeholder rc=$?"     # probe line itself is ignored
 rm -f docs/_leak_probe.md
 ```
-Expected: real-path probe → FAIL (exit 1); placeholder probe → not the cause of failure.
+Expected: real-path probe → FAIL (exit 1); placeholder probe → ignored (not a leak).
 
 **Step 3: Fix the existing leak.** Edit `docs/testing.md` (the `/Users/<name>/...` example line) → replace the operator-home segment with `/Users/<name>/...` placeholder (angle-bracket) or `<repo-root>/...`.
 
