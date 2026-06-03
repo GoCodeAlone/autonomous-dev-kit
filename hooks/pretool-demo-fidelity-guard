@@ -81,6 +81,9 @@ session_key=""
 
 cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
 [ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || true
+declare -f autodev_repo_root >/dev/null 2>&1 || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
+ADK_ROOT="$(autodev_repo_root "$cwd_dir")"
 
 dedup_key=""
 if command -v sha256sum >/dev/null 2>&1; then
@@ -89,7 +92,7 @@ elif command -v shasum >/dev/null 2>&1; then
   dedup_key=$(printf '%s' "${session_key}:${file_path}" | shasum -a 256 2>/dev/null | cut -d' ' -f1 || true)
 fi
 
-state_dir="${cwd_dir}/.claude/autodev-state"
+state_dir="${ADK_ROOT}/.claude/autodev-state"
 state_file="${state_dir}/demo-fidelity-seen"
 
 if [ -n "$dedup_key" ]; then

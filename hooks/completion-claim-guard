@@ -26,6 +26,9 @@ hook_input=$(cat || true)
 
 cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
 [ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || true
+declare -f autodev_repo_root >/dev/null 2>&1 || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
+ADK_ROOT="$(autodev_repo_root "$cwd_dir")"
 
 # Honour stop_hook_active to avoid infinite loops.
 # When true the agent was already told to continue once; let the stop proceed.
@@ -74,7 +77,7 @@ find_locked_plans() {
     }
 
     session_locked_plans() {
-        local state_file="${cwd_dir}/.claude/autodev-state/session-locks.jsonl"
+        local state_file="${ADK_ROOT}/.claude/autodev-state/session-locks.jsonl"
         [ -f "$state_file" ] || return 0
         jq -r --arg session "$session_key" \
             'select(.ev == "session-lock" and .session == $session) | .pl // empty' \
@@ -141,7 +144,7 @@ if [ -z "$failures" ]; then
     if [ "$completionish" = "true" ] && [ "$waiting_for_user" != "true" ]; then
         first_plan=$(printf '%s\n' "$locked_plans" | head -1)
         first_plan_name=$(basename "$first_plan")
-        progress_file="${cwd_dir}/.autodev/state/phase-progress.jsonl"
+        progress_file="${ADK_ROOT}/.autodev/state/phase-progress.jsonl"
         checkpoint_prefix="Completion checkpoint — locked plan still in effect: ${first_plan_name} "
         block "${checkpoint_prefix}
 

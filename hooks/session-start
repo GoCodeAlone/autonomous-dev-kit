@@ -44,6 +44,9 @@ if command -v jq >/dev/null 2>&1; then
     cwd_from_hook=$(printf '%s' "$hook_input"   | jq -r '.cwd // empty'              2>/dev/null || true)
     [ -n "$cwd_from_hook" ] && cwd_dir="$cwd_from_hook"
 fi
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || true
+declare -f autodev_repo_root >/dev/null 2>&1 || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
+ADK_ROOT="$(autodev_repo_root "$cwd_dir")"
 [ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
 
 # Skip injection for subagent contexts entirely. Codex's
@@ -57,7 +60,7 @@ if [ -n "$agent_id" ]; then
     exit 0
 fi
 
-STATE_DIR="${cwd_dir}/.claude/autodev-state"
+STATE_DIR="${ADK_ROOT}/.claude/autodev-state"
 STATE_FILE="${STATE_DIR}/in-progress.jsonl"
 SESSION_LOCKS_FILE="${STATE_DIR}/session-locks.jsonl"
 SEEN_FILE="${STATE_DIR}/session-start-seen"

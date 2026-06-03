@@ -19,6 +19,9 @@ hook_input=$(cat || true)
 tool_name=$(printf '%s' "$hook_input" | jq -r '.tool_name // empty' 2>/dev/null || true)
 cwd_dir=$(printf '%s'   "$hook_input" | jq -r '.cwd // empty'        2>/dev/null || true)
 [ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || true
+declare -f autodev_repo_root >/dev/null 2>&1 || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
+ADK_ROOT="$(autodev_repo_root "$cwd_dir")"
 
 case "$tool_name" in
     Skill)
@@ -46,7 +49,7 @@ case "$tool_name" in
         ;;
 esac
 
-STATE_DIR="${cwd_dir}/.claude/autodev-state"
+STATE_DIR="${ADK_ROOT}/.claude/autodev-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
 STATE_FILE="${STATE_DIR}/in-progress.jsonl"
 LOCK_FILE="${STATE_DIR}/.in-progress.lock"

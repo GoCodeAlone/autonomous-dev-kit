@@ -31,6 +31,9 @@ hook_input=$(cat || true)
 
 cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
 [ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || true
+declare -f autodev_repo_root >/dev/null 2>&1 || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
+ADK_ROOT="$(autodev_repo_root "$cwd_dir")"
 transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
 session_key=""
 [ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
@@ -40,7 +43,7 @@ session_key=""
 # earlier reminder). MUST run before the no-locked-plans early-exit below. Guard on a
 # non-empty session key (no blanket file wipe on identity-less hosts).
 if [ -n "${session_key:-}" ]; then
-    reminder_marker="${cwd_dir}/.claude/autodev-state/pr-reminder-seen"
+    reminder_marker="${ADK_ROOT}/.claude/autodev-state/pr-reminder-seen"
     if [ -f "$reminder_marker" ]; then
         # grep -v exits 1 when no lines remain (only our key) — tolerate it under set -e.
         remaining="$(grep -vxF "$session_key" "$reminder_marker" 2>/dev/null || true)"
@@ -73,7 +76,7 @@ if [ -d "$plans_dir" ]; then
     }
 
     session_locked_plans() {
-        local state_file="${cwd_dir}/.claude/autodev-state/session-locks.jsonl"
+        local state_file="${ADK_ROOT}/.claude/autodev-state/session-locks.jsonl"
         [ -f "$state_file" ] || return 0
         jq -r --arg session "$session_key" \
             'select(.ev == "session-lock" and .session == $session) | .pl // empty' \
@@ -140,7 +143,7 @@ if [ -z "$state_section" ]; then
 fi
 
 # ── Append to autodev-state file ─────────────────────────────────────────
-STATE_DIR="${cwd_dir}/.claude/autodev-state"
+STATE_DIR="${ADK_ROOT}/.claude/autodev-state"
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 STATE_FILE="${STATE_DIR}/in-progress.jsonl"
 
