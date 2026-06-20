@@ -1,5 +1,21 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.5.1 — 2026-06-20
+
+Plugin/UI integration proof hardening for issue #80.
+
+- `adversarial-design-review`: adds design- and plan-phase checks for contributed
+  UI rendering proof. Plugin admin pages, panels, widgets, routes, and nav items
+  now require evidence beyond metadata or route registration.
+- `runtime-launch-validation`: adds a modular UI/plugin contribution change
+  class. Validation must launch the host, authenticate where needed, enumerate
+  contributions, load each new shell route, assert contribution-specific
+  content, and verify unauthorized denial.
+- `verification-before-completion`: adds a claim-matrix row and pattern for
+  modular UI/plugin contribution integration claims, closing the failure mode
+  where provider tests and contribution APIs pass while the host shell renders
+  blank or stub pages.
+
 ## v6.3.1 — 2026-06-01
 
 Bug fix for **#66** — PreCompact hook returned invalid JSON on **Codex**.
