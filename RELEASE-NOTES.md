@@ -1,5 +1,21 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.5.2 — 2026-06-20
+
+PR metadata secret-hygiene hardening after a live GitHub token was pasted into a
+merged PR body verification command.
+
+- `finishing-a-development-branch`: adds an always-on PR body secret hygiene
+  gate before PR creation/update. Verification transcripts must redact tokens,
+  API keys, cookies, passwords, and bearer credentials; already-published
+  secrets require metadata redaction and operator revocation.
+- `verification-before-completion`: adds a `PR body ready` claim requiring final
+  Markdown/tempfile inspection for live secrets before publishing.
+- `tests/no-machine-paths.sh`: broadens artifact hygiene checks to reject live
+  GitHub token patterns and inline secret assignments in committed docs,
+  decisions, skills, and agents, while allowing placeholders and GitHub
+  `secrets.*` references.
+
 ## v6.5.1 — 2026-06-20
 
 Plugin/UI integration proof hardening for issue #80.

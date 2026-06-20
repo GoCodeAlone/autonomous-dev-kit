@@ -39,6 +39,7 @@ Skip step = unverified claim.
 | lint clean (Go-repo PR) | `golangci-lint run` exit 0 | tests green alone |
 | demo/example works | the real artifact executed via the demo produced the shown output (see `autodev:demonstration-fidelity`) | hand-written/hard-coded output, a reimplementation, a different-language fake |
 | modular UI/plugin contribution integrated | provider emits metadata + host lists/authorizes it + shell nav links it + each new route renders non-empty contribution-specific content under a real session + unauthorized access is rejected | provider unit tests, route registration, contribution API only, screenshots of unrelated shell chrome |
+| PR body ready | full PR body inspected for live secrets and uses placeholders for tokens/API keys/cookies/passwords | raw terminal transcript pasted without redaction, inline `GITHUB_TOKEN=<real-value>`, bearer/cookie values |
 
 ## Red Flags
 
@@ -65,6 +66,9 @@ Delegation:
 
 Modular UI/plugin contribution:
 `launch host → login/issue real session → list contributions → open each new shell route → assert contribution-specific content and unauthorized 401/403`.
+
+PR body:
+`inspect final Markdown/tempfile → grep for token patterns → replace values with <redacted> or secret names → only then create/update PR`.
 
 ## Bottom Line
 
