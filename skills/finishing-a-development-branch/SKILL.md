@@ -109,6 +109,12 @@ Stop. Don't proceed to Step 2.
 
 If triggered: invoke `skills/runtime-launch-validation/SKILL.md`. Build and launch the artifact under production-equivalent conditions, run the failure-signature scrape, capture the transcript, paste it into the PR body.
 
+Before pasting any transcript or command into a PR body, redact secret values.
+Never include a live token, API key, cookie, password, or bearer credential in
+PR metadata. Replace inline secret assignments with placeholders such as
+`GITHUB_TOKEN=<redacted>` or with the secret name only, for example
+`GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}`.
+
 If NOT triggered (pure logic refactor, doc-only, test-only): skip this step.
 
 **The launch transcript is required in the PR body when this step triggers.** Without it, the PR is not ready for merge — even if all unit tests pass.
@@ -170,6 +176,24 @@ This is a checklist gate (read the diff, grep identifiers), **not** an automated
 **Accountability token:** emit one line into the PR body — `Doc-reconciliation: clean` or `Doc-reconciliation: N item(s) fixed — <summary>` — so pr-monitoring, the human reviewer, and `post-merge-retrospective` (Step 5 missed-activation row) can confirm the gate ran without a script.
 
 Continue to Step 2.
+
+### Step 1f: PR Body Secret Hygiene
+
+**Trigger:** always before PR creation or PR body update.
+
+Action:
+
+1. Inspect the complete PR body text before sending it to GitHub.
+2. Reject any live secret literal, including GitHub token prefixes such as
+   `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`, bearer tokens,
+   cookies, or `NAME=<secret-value>` command examples.
+3. Rewrite verification commands to show placeholders or secret names, not
+   values: `GITHUB_TOKEN=<redacted> wfctl plugin ci -quiet`.
+4. If a secret was already published in a PR body/comment, redact the metadata,
+   tell the operator it must be revoked, and record the incident in the final
+   status.
+
+Do not proceed to PR creation until the body is clean.
 
 ### Step 2: Determine Base Branch
 
