@@ -25,6 +25,8 @@ Triggered by changes to any of:
 - Application-startup configuration (config files read at boot)
 - Database migrations
 - Plugin / extension loading paths
+- Modular UI/plugin contribution wiring (a plugin registers pages, panels,
+  widgets, admin modules, or navigation into a host shell)
 - Interface boundary changes (new method, field, event type, or hook crossing any of the boundary classes in `agents/boundary-classes.md`: producer→consumer, caller→callee, sender→handler, or plugin→host)
 
 Triggered NOT by:
@@ -44,6 +46,7 @@ Triggered NOT by:
 | Database migration | Apply against ephemeral DB instance; revert (down migration, if applicable); re-apply | Idempotent? No orphaned schema objects? |
 | Library / SDK | Import into a tiny consumer program, exercise the new public surface | Output, behavior matches docs |
 | Plugin / extension | Load it into the host application, exercise a representative call | Host doesn't crash on load; representative call returns |
+| Modular UI/plugin contribution (admin page, panel, widget, nav item, or shell contribution) | Launch the host with the provider plugin installed; authenticate as a real principal if required; enumerate contributions from the host; open each new contribution route through the host shell, not the provider directly | Provider metadata exists; host lists and authorizes it; shell navigation includes it; route returns non-empty contribution-specific content; unauthorized principal is rejected; representative JS-backed contribution renders without blank/stub output |
 | Interface boundary change (new method, field, event type, or hook — see `agents/boundary-classes.md` for the canonical boundary-class list) | Launch both sides/participants as applicable; exercise a real interaction across the boundary — not a mock or stub on either end | The receiving side correctly processes the new data/method/event/hook; no fallback silently swallows the new path; failure-signature scrape clean on all participating sides |
 | Demonstration / example / showcase artifact (anything built to show a change working) | The real artifact, invoked through its real entry point; capture output from that run | Output is produced by the real code path, not literals; the artifact-under-demonstration is NOT stubbed; any substituted *dependency* sits behind a real interface seam and is disclosed. See `autodev:demonstration-fidelity`. |
 

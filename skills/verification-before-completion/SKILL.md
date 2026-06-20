@@ -38,6 +38,7 @@ Skip step = unverified claim.
 | requirements met | checklist vs plan/design | tests alone |
 | lint clean (Go-repo PR) | `golangci-lint run` exit 0 | tests green alone |
 | demo/example works | the real artifact executed via the demo produced the shown output (see `autodev:demonstration-fidelity`) | hand-written/hard-coded output, a reimplementation, a different-language fake |
+| modular UI/plugin contribution integrated | provider emits metadata + host lists/authorizes it + shell nav links it + each new route renders non-empty contribution-specific content under a real session + unauthorized access is rejected | provider unit tests, route registration, contribution API only, screenshots of unrelated shell chrome |
 
 ## Red Flags
 
@@ -61,6 +62,9 @@ Requirements:
 
 Delegation:
 `agent says done → inspect VCS diff → run verification → report observed state`.
+
+Modular UI/plugin contribution:
+`launch host → login/issue real session → list contributions → open each new shell route → assert contribution-specific content and unauthorized 401/403`.
 
 ## Bottom Line
 
