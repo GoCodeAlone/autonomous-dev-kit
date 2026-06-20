@@ -2,8 +2,7 @@
 # tests/no-machine-paths.sh — forbid operator-home paths and live secret literals in committed artifacts.
 # Catches a real leak (/Users/<realuser>/x) but IGNORES <placeholder> segments and ellipsis,
 # so artifacts that DOCUMENT the pattern (this feature's own docs) pass. Lines containing the
-# sentinel `path-hygiene-allow` are skipped. Scans docs/, decisions/, and skills/ (all committed
-# artifact dirs — the skill-rule's "enforced by this script" claim must hold for skills/ too).
+# sentinel `path-hygiene-allow` are skipped. Scans docs/, decisions/, skills/, and agents/.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 pattern='(/Users/|/home/)[A-Za-z0-9][A-Za-z0-9._-]*'

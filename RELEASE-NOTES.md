@@ -12,8 +12,9 @@ merged PR body verification command.
 - `verification-before-completion`: adds a `PR body ready` claim requiring final
   Markdown/tempfile inspection for live secrets before publishing.
 - `tests/no-machine-paths.sh`: broadens artifact hygiene checks to reject live
-  GitHub token patterns and inline secret assignments in committed docs/skills,
-  while allowing placeholders and GitHub `secrets.*` references.
+  GitHub token patterns and inline secret assignments in committed docs,
+  decisions, skills, and agents, while allowing placeholders and GitHub
+  `secrets.*` references.
 
 ## v6.5.1 — 2026-06-20
 
