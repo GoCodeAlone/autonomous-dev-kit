@@ -93,6 +93,7 @@ When writing a plan task, the verification step must match the change class. A g
 | CLI command | `cmd --help` + representative invocation | help text correct; exit 0 |
 | UI component | render in browser/dev server | screenshot or visual confirmation |
 | Plugin / extension | load into host + exercise representative call | exit 0; representative call returns expected value |
+| Declared integration / extension | build an integration matrix from manifests/config/deps/deployment descriptors; launch the real host or consumer for each `runtime-integrated` item and exercise a representative lifecycle | every declared item is marked `config-only`, `runtime-integrated`, or `deferred`; runtime-integrated rows show host/consumer evidence; config-only/deferred rows cite rationale/tracking |
 | Documentation / comments | spell-check + render preview | no broken anchors |
 | Hook / trigger / event handler | fire the event; observe handler runs | logged side effect confirmed; assertion passes |
 | Multi-component boundary | run an integration/E2E path with real adjacent components where feasible | request/event crosses boundary; downstream side effect observed |
@@ -115,6 +116,12 @@ Plans must turn design-level validation into executable checks:
   executes representative call; CLI command reaches service and observes side
   effect. Mock-only tests are allowed only when the design explains why the real
   boundary cannot be exercised locally.
+- **Declared integrations/extensions:** enumerate every integration declared by
+  manifests, config, lockfiles, dependencies, deployment descriptors, or the
+  plan itself. Mark each as `config-only`, `runtime-integrated`, or `deferred`.
+  Runtime-integrated items need a launched-host/consumer proof; config-only and
+  deferred items need rationale or tracking. This rule is not specific to any
+  one plugin system.
 - **Infrastructure changes:** include render/validate/plan/dry-run checks for
   IaC or deployment config. If a safe sandbox apply is available, include it.
   Destructive or production actions require explicit human approval already

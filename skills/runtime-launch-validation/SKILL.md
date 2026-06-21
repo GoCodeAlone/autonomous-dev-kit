@@ -25,6 +25,11 @@ Triggered by changes to any of:
 - Application-startup configuration (config files read at boot)
 - Database migrations
 - Plugin / extension loading paths
+- Declared integration / extension adoption where a config file, manifest,
+  lockfile, dependency list, deployment descriptor, or plan says an external
+  component is installed, enabled, or used by a host or consumer (module,
+  connector, auth provider, storage backend, worker, scheduler, webhook, UI
+  contribution, CLI extension, SDK adapter, etc.)
 - Modular UI/plugin contribution wiring (a plugin registers pages, panels,
   widgets, admin modules, or navigation into a host shell)
 - Interface boundary changes (new method, field, event type, or hook crossing any of the boundary classes in `agents/boundary-classes.md`: producer→consumer, caller→callee, sender→handler, or plugin→host)
@@ -46,11 +51,19 @@ Triggered NOT by:
 | Database migration | Apply against ephemeral DB instance; revert (down migration, if applicable); re-apply | Idempotent? No orphaned schema objects? |
 | Library / SDK | Import into a tiny consumer program, exercise the new public surface | Output, behavior matches docs |
 | Plugin / extension | Load it into the host application, exercise a representative call | Host doesn't crash on load; representative call returns |
+| Declared integration / extension | Launch the real host or consumer with the declared integration config. Produce an integration matrix covering every declared item as `config-only`, `runtime-integrated`, or `deferred`. For `runtime-integrated` items, exercise a representative lifecycle through the host/consumer, not only the provider package. For `config-only` or `deferred` items, cite the rationale or tracking issue. | Matrix covers all declared items; config-only/deferred rows have explicit rationale/tracking; runtime-integrated rows are imported, loaded, registered, authorized when applicable, and perform at least one real call/event/render/state transition; stateful flows prove state after reload/restart when feasible; failure-signature scrape clean. |
 | Modular UI/plugin contribution (admin page, panel, widget, nav item, or shell contribution) | Launch the host with the provider plugin installed; authenticate as a real principal if required; enumerate contributions from the host; open each new contribution route through the host shell, not the provider directly | Provider metadata exists; host lists and authorizes it; shell navigation includes it; route returns non-empty contribution-specific content; unauthorized principal is rejected; representative JS-backed contribution renders without blank/stub output |
 | Interface boundary change (new method, field, event type, or hook — see `agents/boundary-classes.md` for the canonical boundary-class list) | Launch both sides/participants as applicable; exercise a real interaction across the boundary — not a mock or stub on either end | The receiving side correctly processes the new data/method/event/hook; no fallback silently swallows the new path; failure-signature scrape clean on all participating sides |
 | Demonstration / example / showcase artifact (anything built to show a change working) | The real artifact, invoked through its real entry point; capture output from that run | Output is produced by the real code path, not literals; the artifact-under-demonstration is NOT stubbed; any substituted *dependency* sits behind a real interface seam and is disclosed. See `autodev:demonstration-fidelity`. |
 
 When a demonstration *also* exercises a new boundary, both this row and the "Interface boundary change" row apply: stub neither the artifact nor the boundary under test — only a disclosed *dependency* behind the artifact may be substituted.
+
+The declared-integration row is host-agnostic. A Workflow plugin registered in
+an admin shell is one example, but the same rule applies to any extension model:
+package manager plugins, auth modules, storage drivers, webhooks, schedulers,
+workers, CLI extensions, and UI contributions. "Installed" means little until
+the real host/consumer proves it can discover, authorize, invoke, render, or
+persist through the integration according to its role.
 
 ## Failure-signature scrape
 

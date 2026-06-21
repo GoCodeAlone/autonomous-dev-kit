@@ -7,6 +7,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ADR="$ROOT/skills/adversarial-design-review/SKILL.md"
 RETRO="$ROOT/skills/post-merge-retrospective/SKILL.md"
 FIN="$ROOT/skills/finishing-a-development-branch/SKILL.md"
+RUNTIME="$ROOT/skills/runtime-launch-validation/SKILL.md"
+VERIFY="$ROOT/skills/verification-before-completion/SKILL.md"
+PLAN="$ROOT/skills/writing-plans/SKILL.md"
 fail=0
 pass(){ printf 'PASS: %s\n' "$1"; }
 bad(){ printf 'FAIL: %s\n' "$1" >&2; fail=$((fail+1)); }
@@ -61,5 +64,30 @@ printf '%s' "$auto_region" | grep -qiE 'Step 1e' \
 hasE "$ADR" 'naming.convention match|Identifier / naming' \
   && pass "#72 ADR plan-phase has Identifier/naming-convention row" \
   || bad  "#72 ADR plan-phase missing naming-convention row"
+
+# --- #79: declared integrations require host/consumer proof, not install-only claims ---
+has "$RUNTIME" "Declared integration / extension" \
+  && pass "#79 runtime launch has declared-integration change class" \
+  || bad  "#79 runtime launch missing declared-integration change class"
+for state in "config-only" "runtime-integrated" "deferred"; do
+  has "$RUNTIME" "$state" \
+    && pass "#79 runtime launch names integration matrix state '$state'" \
+    || bad  "#79 runtime launch missing integration matrix state '$state'"
+done
+has "$VERIFY" "declared integration integrated" \
+  && pass "#79 verification has declared-integration claim row" \
+  || bad  "#79 verification missing declared-integration claim row"
+has "$VERIFY" "integration matrix" \
+  && pass "#79 verification requires integration matrix evidence" \
+  || bad  "#79 verification missing integration matrix evidence"
+has "$ADR" "Declared integration proof" \
+  && pass "#79 ADR design-phase has declared-integration proof row" \
+  || bad  "#79 ADR design-phase missing declared-integration proof row"
+has "$ADR" "Missing declared integration matrix" \
+  && pass "#79 ADR plan-phase has missing-declared-integration-matrix row" \
+  || bad  "#79 ADR plan-phase missing declared-integration matrix row"
+has "$PLAN" "Declared integration / extension" \
+  && pass "#79 writing-plans has declared-integration verification class" \
+  || bad  "#79 writing-plans missing declared-integration verification class"
 
 echo ""; echo "Results: $fail failure(s)"; [ "$fail" -eq 0 ]
