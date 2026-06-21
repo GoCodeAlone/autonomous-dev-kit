@@ -1,5 +1,23 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.5.3 — 2026-06-21
+
+Declared integration proof hardening for issue #79.
+
+- `runtime-launch-validation`: adds a host-agnostic "Declared integration /
+  extension" change class. Any manifest/config/lockfile/dependency/deployment
+  claim that an integration is installed, enabled, or used now requires an
+  integration matrix and launched host/consumer proof unless explicitly marked
+  `config-only` or `deferred`.
+- `verification-before-completion`: adds a claim-matrix row and proof pattern
+  for declared integrations, including stateful reload/persistence checks and
+  authz negative paths where relevant.
+- `adversarial-design-review`, `writing-plans`, and `requesting-code-review`:
+  require plans and reviews to catch install-only/config-only integration claims
+  that never prove the real consumer discovers and exercises the integration.
+- `tests/pipeline-evidence-doc-sync.sh`: adds regression assertions so the
+  issue #79 integration-proof contract cannot silently regress.
+
 ## v6.5.2 — 2026-06-20
 
 PR metadata secret-hygiene hardening after a live GitHub token was pasted into a

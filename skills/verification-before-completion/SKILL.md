@@ -38,6 +38,7 @@ Skip step = unverified claim.
 | requirements met | checklist vs plan/design | tests alone |
 | lint clean (Go-repo PR) | `golangci-lint run` exit 0 | tests green alone |
 | demo/example works | the real artifact executed via the demo produced the shown output (see `autodev:demonstration-fidelity`) | hand-written/hard-coded output, a reimplementation, a different-language fake |
+| declared integration integrated | integration matrix covers every declared item as `config-only`, `runtime-integrated`, or `deferred`; runtime-integrated rows are exercised through the real host/consumer with representative lifecycle evidence; stateful/admin/identity flows prove state after reload/restart where feasible; authz negative path checked where applicable | dependency installed, lockfile/config updated, provider unit tests, metadata only, provider package exercised without the host/consumer |
 | modular UI/plugin contribution integrated | provider emits metadata + host lists/authorizes it + shell nav links it + each new route renders non-empty contribution-specific content under a real session + unauthorized access is rejected | provider unit tests, route registration, contribution API only, screenshots of unrelated shell chrome |
 | PR body ready | full PR body inspected for live secrets and uses placeholders for tokens/API keys/cookies/passwords | raw terminal transcript pasted without redaction, inline `GITHUB_TOKEN=<real-value>`, bearer/cookie values |
 
@@ -66,6 +67,9 @@ Delegation:
 
 Modular UI/plugin contribution:
 `launch host → login/issue real session → list contributions → open each new shell route → assert contribution-specific content and unauthorized 401/403`.
+
+Declared integration:
+`read manifests/config/deps → build integration matrix → mark each item config-only/runtime-integrated/deferred → launch host/consumer → exercise representative lifecycle for runtime-integrated items → prove reload/persistence and authz negatives where relevant → cite issues for deferred rows`.
 
 PR body:
 `inspect final Markdown/tempfile → grep for token patterns → replace values with <redacted> or secret names → only then create/update PR`.
