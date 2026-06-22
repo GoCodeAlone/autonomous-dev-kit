@@ -58,6 +58,25 @@ if [ -n "${session_key:-}" ]; then
     fi
 fi
 
+# ── clear this session's portfolio-inventory-reminder marker ──────────────────
+# Mirrors the pr-reminder-seen block above so the portfolio reminder re-emits once
+# after compaction. Guard on a non-empty session key (no blanket file wipe).
+if [ -n "${session_key:-}" ]; then
+    portfolio_marker="${ADK_ROOT}/.claude/autodev-state/portfolio-inventory-seen"
+    if [ -f "$portfolio_marker" ]; then
+        # grep -v exits 1 when no lines remain (only our key) — tolerate it under set -e.
+        remaining="$(grep -vxF "$session_key" "$portfolio_marker" 2>/dev/null || true)"
+        if [ -n "$remaining" ]; then
+            # Atomic: write other sessions' keys to a temp file then rename.
+            printf '%s\n' "$remaining" > "${portfolio_marker}.tmp" 2>/dev/null \
+                && mv "${portfolio_marker}.tmp" "$portfolio_marker" \
+                || rm -f "${portfolio_marker}.tmp"
+        else
+            rm -f "$portfolio_marker"                          # only our key → remove marker
+        fi
+    fi
+fi
+
 # ── Find locked plans and collect their state ─────────────────────────────────
 plans_dir="${cwd_dir}/docs/plans"
 state_section=""

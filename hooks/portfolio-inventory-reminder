@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# hooks/portfolio-inventory-reminder
+# UserPromptSubmit hook: reminds the agent to consult the portfolio tooling
+# inventory (if present) before designing/building a feature, to avoid
+# rebuilding capability already provided by an existing plugin/tool.
+#
+# Injects hookSpecificOutput.additionalContext so the model sees the reminder
+# before it starts planning its response. Does NOT block the prompt.
+#
+# Session dedup: emit once per session; reset by pre-compact-snapshot on
+# compaction. Keyed by transcript basename; degrade to emit-every-time when
+# absent (mirrors pretool-pr-review-reminder #61).
+#
+# Global opt-out: set SUPERPOWERS_HOOKS_DISABLE=1
+
+set -euo pipefail
+
+[ "${SUPERPOWERS_HOOKS_DISABLE:-}" = "1" ] && exit 0
+
+# Require stdin (UserPromptSubmit always sends a JSON payload).
+[ -t 0 ] && exit 0
+command -v jq >/dev/null 2>&1 || exit 0
+
+hook_input=$(cat || true)
+[ -z "$hook_input" ] && exit 0
+
+# Session dedup (#61): emit once per session; reset by pre-compact-snapshot on
+# compaction. Keyed by transcript basename; degrade to emit-every-time when absent.
+cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
+[ -z "$cwd_dir" ] && cwd_dir="${PWD}"
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || true
+declare -f autodev_repo_root >/dev/null 2>&1 || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
+ADK_ROOT="$(autodev_repo_root "$cwd_dir")"
+transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+session_key=""
+[ -n "$transcript_path" ] && session_key=$(basename "$transcript_path")
+marker="${ADK_ROOT}/.claude/autodev-state/portfolio-inventory-seen"
+if [ -n "$session_key" ] && grep -qxF "$session_key" "$marker" 2>/dev/null; then
+    exit 0   # already reminded this session
+fi
+
+reminder=$(cat <<'REMINDER'
+<IMPORTANT>
+Portfolio inventory: before building/designing, consult the tooling inventory in
+`docs/PORTFOLIO.md` (if present) to avoid rebuilding existing plugin/tooling
+capability; record follow-ups in `docs/FOLLOWUPS.md`.
+</IMPORTANT>
+REMINDER
+)
+
+emit_additional_context() {
+    local event_name="$1"
+    local context="$2"
+    jq -n --arg event "$event_name" --arg context "$context" \
+        '{hookSpecificOutput:{hookEventName:$event,additionalContext:$context}}'
+}
+
+emit_additional_context "UserPromptSubmit" "$reminder"
+
+# Record this session so the reminder doesn't repeat (only when we have a session key).
+if [ -n "$session_key" ]; then
+    mkdir -p "$(dirname "$marker")" 2>/dev/null || true
+    printf '%s\n' "$session_key" >> "$marker" 2>/dev/null || true
+fi
+
+exit 0
