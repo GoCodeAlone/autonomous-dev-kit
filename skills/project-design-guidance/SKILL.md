@@ -15,6 +15,12 @@ Prefer `docs/design-guidance.md`.
 
 If equivalent exists, use + cite it instead of duplicating: `docs/product-guidance.md`, `docs/architecture.md`, `docs/technical-strategy.md`, repo `AGENTS.md`/`CLAUDE.md`, ADRs with cross-cutting direction. Add pointer file only if discoverability is poor.
 
+## Portfolio Inventory (reuse before building)
+
+If the project keeps a portfolio catalog (commonly `docs/PORTFOLIO.md` per the workspace's `docs/design-guidance.md`), consult its tooling-inventory section BEFORE designing or building a feature. The goal is to avoid rebuilding capability an existing plugin/tool already provides — cite the existing tool in the design instead of proposing a parallel one.
+
+Record any follow-ups the inventory surfaces (a gap, a needed capability, a doc-lag) in the follow-up queue (commonly `docs/FOLLOWUPS.md`) so they are not lost.
+
 ## Pre-Design Gate
 
 1. Search:
