@@ -1882,6 +1882,27 @@ test_demo_fidelity_handles_malformed_stdin
 test_demo_fidelity_dedups_within_session
 test_demo_fidelity_fail_open_when_state_unwritable
 
+test_portfolio_inventory_reminder_lifecycle() {
+  local tmp; tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  local sess='/x/transcripts/sess-portfolio.jsonl'
+  local payload='{"transcript_path":"'"$sess"'","cwd":"'"$tmp"'"}'
+  local out1; out1="$(run_hook portfolio-inventory-reminder "$payload")"
+  printf '%s' "$out1" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1 \
+    && pass "portfolio-reminder: first call emits" || fail "portfolio-reminder: first call should emit"
+  local out2; out2="$(run_hook portfolio-inventory-reminder "$payload")"
+  [ -z "$out2" ] && pass "portfolio-reminder: deduped within session" \
+    || fail "portfolio-reminder: second call should be silent, got: $out2"
+  # PreCompact must clear the portfolio-inventory-seen marker (V6).
+  run_hook pre-compact-snapshot '{"cwd":"'"$tmp"'","transcript_path":"'"$sess"'"}' >/dev/null 2>&1 || true
+  local out3; out3="$(run_hook portfolio-inventory-reminder "$payload")"
+  printf '%s' "$out3" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1 \
+    && pass "portfolio-reminder: re-emits after PreCompact reset" \
+    || fail "portfolio-reminder: should re-emit after compaction, got: $out3"
+}
+
+test_portfolio_inventory_reminder_lifecycle
+
 if [ "$failures" -ne 0 ]; then
   printf '\n%d hook contract test(s) failed.\n' "$failures" >&2
   exit 1
