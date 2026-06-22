@@ -21,6 +21,8 @@ If the project keeps a portfolio catalog (commonly `docs/PORTFOLIO.md` per the w
 
 Record any follow-ups the inventory surfaces (a gap, a needed capability, a doc-lag) in the follow-up queue (commonly `docs/FOLLOWUPS.md`) so they are not lost.
 
+If the project keeps a projects tracker (commonly `docs/PROJECTS.md`), consult it for the **current initiative focus + phase** before designing — confirm the work advances an active project's stated `next` step, and record the project + phase in the design so the work stays aligned with what the operator is actually driving (vs. orphan effort on a stale or on-hold initiative).
+
 ## Pre-Design Gate
 
 1. Search:
