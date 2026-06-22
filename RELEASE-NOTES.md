@@ -1,5 +1,18 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.5.5 — 2026-06-22
+
+Projects-layer alignment: the `project-design-guidance` skill now also consults the projects tracker (`docs/PROJECTS.md`) for current initiative focus + phase.
+
+- `project-design-guidance`: before designing, consult `docs/PROJECTS.md` (if present) to confirm the work advances an active project's stated `next` step; record the project + phase in the design so effort stays aligned with what the operator is driving (vs. orphan work on a stale/on-hold initiative). Companion to the portfolio-catalog consult added in v6.5.4.
+
+## v6.5.4 — 2026-06-22
+
+Portfolio-system alignment: a new once-per-compaction reminder hook + skill consult keep agents from rebuilding existing tooling.
+
+- `hooks/portfolio-inventory-reminder` (new `UserPromptSubmit` hook): nags once per compaction window to consult the portfolio tooling inventory before building; mirrors `pretool-pr-review-reminder` (session-key = `basename transcript_path`; marker `portfolio-inventory-seen`; cleared by `pre-compact-snapshot` line-filter-rewrite). Lifecycle covered by `tests/hook-contracts.sh`.
+- `project-design-guidance`: consult the portfolio catalog's tooling-inventory section (`docs/PORTFOLIO.md`) before building to avoid rebuilding existing plugin/tool capability; record surfaced follow-ups in `docs/FOLLOWUPS.md`.
+
 ## v6.5.3 — 2026-06-21
 
 Declared integration proof hardening for issue #79.
