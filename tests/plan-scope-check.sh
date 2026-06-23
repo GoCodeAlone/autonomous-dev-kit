@@ -30,6 +30,7 @@
 
 set -euo pipefail
 
+CALLER_CWD="$PWD"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
@@ -62,6 +63,13 @@ sha256_stdin() {
     echo "error: need sha256sum or shasum installed" >&2
     return 3
   fi
+}
+
+resolve_input_path() {
+  case "$1" in
+    /*) printf '%s\n' "$1" ;;
+    *) printf '%s/%s\n' "$CALLER_CWD" "$1" ;;
+  esac
 }
 
 # Check the manifest is well-formed. Args: plan path. Echoes problems to stdout.
@@ -221,6 +229,9 @@ check_lock_hash() {
 # in the plan header (defaults to `main` if absent).
 check_against_branch() {
   local plan="$1"
+  local plan_dir
+  plan_dir="$(cd "$(dirname "$plan")" 2>/dev/null && pwd || true)"
+  [ -n "$plan_dir" ] || plan_dir="$CALLER_CWD"
   local base
   base="$(grep -E '^\*\*Base branch:\*\*' "$plan" | head -1 \
             | sed -E 's/.*\*\*Base branch:\*\*[[:space:]]*([A-Za-z0-9._/-]+).*/\1/' || true)"
@@ -252,8 +263,8 @@ check_against_branch() {
 
   while read -r br; do
     [ -z "$br" ] && continue
-    if ! git rev-parse --verify "refs/heads/${br}" >/dev/null 2>&1 \
-      && ! git rev-parse --verify "refs/remotes/origin/${br}" >/dev/null 2>&1; then
+    if ! git -C "$plan_dir" rev-parse --verify "refs/heads/${br}" >/dev/null 2>&1 \
+      && ! git -C "$plan_dir" rev-parse --verify "refs/remotes/origin/${br}" >/dev/null 2>&1; then
       printf '%s: planned branch %s does not exist locally or on origin\n' "$plan" "$br"
       rc=1
     fi
@@ -273,13 +284,13 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --plan)
       [ -n "${2:-}" ] || { usage; exit 3; }
-      MODE_PLAN+=("$2"); shift 2 ;;
+      MODE_PLAN+=("$(resolve_input_path "$2")"); shift 2 ;;
     --verify-lock)
       [ -n "${2:-}" ] || { usage; exit 3; }
-      MODE_VERIFY_LOCK+=("$2"); shift 2 ;;
+      MODE_VERIFY_LOCK+=("$(resolve_input_path "$2")"); shift 2 ;;
     --against-branch)
       [ -n "${2:-}" ] || { usage; exit 3; }
-      MODE_AGAINST_BRANCH+=("$2"); shift 2 ;;
+      MODE_AGAINST_BRANCH+=("$(resolve_input_path "$2")"); shift 2 ;;
     --strict)
       STRICT=1; shift ;;
     --help|-h)

@@ -5,12 +5,16 @@ on:
       - 'hooks/**'
       - 'tests/hook-contracts.sh'
       - 'tests/hook-stdout-discipline.sh'
+      - 'tests/plan-scope-check-contracts.sh'
+      - 'tests/plan-scope-check.sh'
       - '.github/workflows/hooks-check.yml'
   pull_request:
     paths:
       - 'hooks/**'
       - 'tests/hook-contracts.sh'
       - 'tests/hook-stdout-discipline.sh'
+      - 'tests/plan-scope-check-contracts.sh'
+      - 'tests/plan-scope-check.sh'
       - '.github/workflows/hooks-check.yml'
 
 permissions:
@@ -27,5 +31,7 @@ jobs:
         run: bash tests/hook-stdout-discipline.sh
       - name: Hook contract tests
         run: bash tests/hook-contracts.sh
+      - name: Plan scope checker contract tests
+        run: bash tests/plan-scope-check-contracts.sh
       - name: Subagent scope guard regression tests (#86)
         run: bash hooks/subagent-scope-guard.test.sh
