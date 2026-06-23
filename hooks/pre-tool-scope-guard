@@ -342,14 +342,14 @@ case "$tool_name" in
         [ -z "$fpath" ] && continue
 
         # ── 5. scope-lock files ──────────────────────────────────────────────
-        # Agent path:   bash "${CLAUDE_PLUGIN_ROOT}/hooks/scope-lock-apply" <plan-path>
+        # Agent path:   bash hooks/scope-lock-apply <plan-path> from the autodev checkout/plugin root.
         # Operator path (pre-session): export SUPERPOWERS_SCOPE_LOCK_WRITE=1
         if printf '%s' "$fpath" | grep -qE '\.scope-lock$'; then
             if [ "${SUPERPOWERS_SCOPE_LOCK_WRITE:-}" != "1" ]; then
                 _reason="Writing to '$(basename "$fpath")' is blocked —"
                 _reason="${_reason} .scope-lock files must be written by the scope-lock skill's helper,"
                 _reason="${_reason} not via the Write tool."
-                _reason="${_reason} Run: bash \"\${CLAUDE_PLUGIN_ROOT}/hooks/scope-lock-apply\" <plan-path>."
+                _reason="${_reason} Run: bash hooks/scope-lock-apply <plan-path> from the autodev checkout/plugin root."
                 _reason="${_reason} The helper extracts the Scope Manifest section, computes its sha256,"
                 _reason="${_reason} and writes the lock file via shell redirection (which is not blocked)."
                 _reason="${_reason} Direct Write/Edit calls break the manifest integrity guarantee"

@@ -180,14 +180,14 @@ When the whole locked design is genuinely complete and verified, close the lock
 instead of leaving stale reminders in the workspace:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-complete" docs/plans/<plan>.md --evidence "<verification summary>"
+bash hooks/scope-lock-complete docs/plans/<plan>.md --evidence "<verification summary>"
 ```
 
-The helper verifies the current manifest hash when the checker is available,
-changes the plan status from `Locked` to `Complete <UTC>`, removes
-`<plan>.scope-lock`, prunes matching `.claude/autodev-state/session-locks.jsonl`
-and lock snapshot rows, and appends a compact completion row to
-`.autodev/state/phase-progress.jsonl`.
+Run the command from the autodev checkout/plugin root. The helper verifies the
+current manifest hash when the checker is available, changes the plan status
+from `Locked` to `Complete <UTC>`, removes `<plan>.scope-lock`, prunes matching
+`.claude/autodev-state/session-locks.jsonl` and lock snapshot rows, and appends
+a compact completion row to `.autodev/state/phase-progress.jsonl`.
 
 Do not manually edit `.scope-lock` files or leave a completed design in
 `Locked` state. Stale locks cause future prompt/stop/pre-compact hooks to
@@ -204,7 +204,7 @@ and does not survive across sessions — a fresh agent inherits no rows from
 the killed one.
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-claim" docs/plans/<plan>.md
+bash hooks/scope-lock-claim docs/plans/<plan>.md
 ```
 
 The helper verifies the plan is Locked, has a `.scope-lock` sidecar, and that
@@ -231,7 +231,7 @@ resume-target checkpoint showing:
 Intentional handoff is still allowed, but it must be explicit:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-claim" docs/plans/<plan>.md --confirmed
+bash hooks/scope-lock-claim docs/plans/<plan>.md --confirmed
 ```
 
 Use `--confirmed` only after the user-visible task, repo, branch, and locked
@@ -256,7 +256,7 @@ out of capacity), close the lock as **Abandoned** rather than leaving stale
 state:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-abandon" docs/plans/<plan>.md \
+bash hooks/scope-lock-abandon docs/plans/<plan>.md \
     --reason "user pivoted away from feature X"
 ```
 
