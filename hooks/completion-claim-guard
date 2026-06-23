@@ -26,7 +26,8 @@ hook_input=$(cat || true)
 
 cwd_dir=$(printf '%s' "$hook_input" | jq -r '.cwd // empty' 2>/dev/null || true)
 [ -z "$cwd_dir" ] && cwd_dir="${PWD}"
-. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)/lib-autodev-paths.sh" 2>/dev/null || true
+hook_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)"
+. "${hook_dir}/lib-autodev-paths.sh" 2>/dev/null || true
 declare -f autodev_repo_root >/dev/null 2>&1 || autodev_repo_root() { printf '%s\n' "${1:-$PWD}"; }
 ADK_ROOT="$(autodev_repo_root "$cwd_dir")"
 
@@ -157,7 +158,7 @@ If this is only a phase/task completion:
   - Continue automatically into the next phase/task from the Scope Manifest.
 
 Only stop if one of these is true:
-  - The entire locked design is complete and verified; run bash \"\${CLAUDE_PLUGIN_ROOT:-.}/hooks/scope-lock-complete\" <plan> --evidence \"<verification>\" to mark it complete and remove lock traces.
+  - The entire locked design is complete and verified; run bash \"${hook_dir}/scope-lock-complete\" <plan> --evidence \"<verification>\" to mark it complete and remove lock traces.
   - There is a hard blocker that requires human input.
   - The next action is a production deploy or destructive production change without already-recorded human approval.
 

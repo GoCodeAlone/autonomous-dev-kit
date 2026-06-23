@@ -974,6 +974,49 @@ PLAN
   pass "completion-claim-guard: flattened checkpoint keeps heading separator"
 }
 
+test_completion_continuation_block_uses_host_neutral_helper_guidance() {
+  local tmp output reason
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans" "$tmp/tests"
+  cat >"$tmp/docs/plans/example.md" <<'PLAN'
+# Example Plan
+
+## Scope Manifest
+
+**PR Count:** 1
+**Tasks:** 1
+**Out of scope:**
+- (none)
+
+**PR Grouping:**
+
+| PR # | Title | Tasks | Branch |
+|------|-------|-------|--------|
+| 1 | Example | Task 1 | feat/example |
+
+**Status:** Locked 2026-05-25T00:00:00Z
+
+### Task 1: Example
+PLAN
+  cp tests/plan-scope-check.sh "$tmp/tests/plan-scope-check.sh"
+  chmod +x "$tmp/tests/plan-scope-check.sh"
+  bash hooks/scope-lock-apply "$tmp/docs/plans/example.md" >/dev/null
+
+  output="$(run_hook completion-claim-guard '{"cwd":"'"$tmp"'","stop_hook_active":false,"last_assistant_message":"Task 1 complete."}')"
+  reason="$(printf '%s' "$output" | jq -r '.reason')"
+
+  if printf '%s' "$reason" | grep -q 'CLAUDE_PLUGIN_ROOT'; then
+    fail "completion-claim-guard: helper guidance must not assume Claude host env vars: ${reason}"
+    return
+  fi
+  if ! printf '%s' "$reason" | grep -q 'scope-lock-complete'; then
+    fail "completion-claim-guard: expected scope-lock-complete helper guidance, got: ${reason}"
+    return
+  fi
+  pass "completion-claim-guard: helper guidance is host-neutral"
+}
+
 test_pretool_records_session_lock_for_scope_lock_apply() {
   local tmp transcript output state_file
   tmp="$(mktemp -d)"
@@ -1891,6 +1934,7 @@ test_scope_lock_complete_preflights_progress_write
 test_scope_lock_complete_rejects_progress_directory
 test_completion_continuation_block
 test_completion_continuation_block_keeps_heading_separator_when_flattened
+test_completion_continuation_block_uses_host_neutral_helper_guidance
 test_pretool_records_session_lock_for_scope_lock_apply
 test_pretool_ignores_prose_mention_of_locked_status
 test_completion_ignores_ambiguous_workspace_locks_when_session_has_no_lock
