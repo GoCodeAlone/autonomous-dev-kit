@@ -42,6 +42,48 @@ run_hook_wrapper() {
     hooks/run-hook.cmd "$hook" >"$stdout_file" 2>"$stderr_file" <<<"$payload"
 }
 
+test_hooks_manifest_commands_do_not_require_claude_plugin_root() {
+  local tmp payload cmd count stdout_file stderr_file stdout_text status
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  payload='{"source":"startup","tool_name":"Bash","tool_input":{"command":"echo hi"},"prompt":"continue","cwd":"'"$tmp"'","transcript_path":"'"$tmp"'/session.jsonl"}'
+  touch "$tmp/session.jsonl"
+
+  count=0
+  while IFS= read -r cmd; do
+    count=$((count + 1))
+    stdout_file="$tmp/stdout-${count}.json"
+    stderr_file="$tmp/stderr-${count}.txt"
+    set +e
+    (
+      cd "$tmp"
+      printf '%s' "$payload" | env -u AUTODEV_PLUGIN_ROOT -u CLAUDE_PLUGIN_ROOT -u CODEX_PLUGIN_ROOT -u CURSOR_PLUGIN_ROOT \
+        LC_ALL=C LANG=C LC_CTYPE=C sh -c "$cmd"
+    ) >"$stdout_file" 2>"$stderr_file"
+    status=$?
+    set -e
+
+    if [ "$status" = "127" ]; then
+      fail "hooks.json command ${count}: must not require CLAUDE_PLUGIN_ROOT; stderr: $(cat "$stderr_file")"
+      continue
+    fi
+    if [ "$status" != "0" ]; then
+      fail "hooks.json command ${count}: expected exit 0, got ${status}; stderr: $(cat "$stderr_file")"
+      continue
+    fi
+    stdout_text="$(cat "$stdout_file")"
+    if ! printf '%s' "$stdout_text" | jq -e . >/dev/null 2>&1; then
+      fail "hooks.json command ${count}: expected JSON stdout, got: ${stdout_text}; stderr: $(cat "$stderr_file")"
+    fi
+  done < <(jq -r '.. | objects | select(.type? == "command") | .command' hooks/hooks.json)
+
+  if [ "$count" = "0" ]; then
+    fail "hooks.json command discovery: expected at least one command hook"
+    return
+  fi
+  pass "hooks.json commands: run without CLAUDE_PLUGIN_ROOT and emit JSON"
+}
+
 # emit_locked_fixture <plan-abs-path> <name>
 #   Writes a minimal-but-valid locked plan to <plan-abs-path>, then runs
 #   hooks/scope-lock-apply against it from the repo root. The plan body is
@@ -1817,6 +1859,7 @@ test_demo_fidelity_fail_open_when_state_unwritable() {
 }
 
 require_jq
+test_hooks_manifest_commands_do_not_require_claude_plugin_root
 test_session_start_json
 test_session_start_time_dedup_suppresses_rapid_refires
 test_session_start_resume_target_checkpoint
