@@ -125,9 +125,12 @@ fi
 
 [ -z "$violations" ] && exit 0
 
-block "Subagent stop blocked — a protected file was modified during this subagent's run:
+block "Subagent stop blocked — protected file changes detected in the working tree:
 
 ${violations}
+The working-tree check cannot attribute these changes to a specific actor or
+turn — they may predate this subagent (e.g. an uncommitted lock left by an
+earlier step). If so, no action is needed.
 Do NOT run any git command (no revert/reset/checkout) and do NOT attempt to
 'fix' this yourself — doing so has caused spurious revert/reapply commits in
 the past (autonomous-dev-kit#86). Instead:
@@ -135,7 +138,5 @@ the past (autonomous-dev-kit#86). Instead:
   2. The lead decides whether the change is legitimate or needs the amendment
      path (recording-decisions → update manifest → re-run alignment-check →
      re-run scope-lock-apply).
-If the change predates this subagent's run (e.g. a pre-existing committed
-lock), it is legitimate and no action is needed.
 
 See skills/scope-lock/SKILL.md for the amendment path."
