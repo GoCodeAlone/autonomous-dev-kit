@@ -1,5 +1,13 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.5.6 — 2026-06-22
+
+Fix for issue #86: `subagent-scope-guard` false-positived on committed `.scope-lock` files and its block message instructed subagents to auto-revert them — producing spurious `git revert`/`reapply` commits from read-only subagents.
+
+- `hooks/subagent-scope-guard`: removed the unattributed "did HEAD's last commit touch a `.scope-lock`" check. A committed `.scope-lock` is always legitimate (`hooks/scope-lock-apply` is the only sanctioned writer; the Write/Edit/MultiEdit tools are guarded against `*.scope-lock` paths), so the check could only false-positive — on every subagent stopping in a repo whose HEAD carried a committed lock (the steady state mid-pipeline). Manifest drift is still enforced by the uncommitted working-tree check (in-flight writes) and the push/PR + Stop hash guards (committed drift).
+- `hooks/subagent-scope-guard`: the block message no longer instructs `git revert` (the instruction that made compliant subagents produce spurious commits). It now tells the subagent to run no git command, surface the finding to the lead, and notes that pre-existing committed locks need no action.
+- `hooks/subagent-scope-guard.test.sh` (new): regression coverage — committed lock at HEAD does NOT block; uncommitted working-tree write DOES block with a non-destructive message; clean repo passes.
+
 ## v6.5.5 — 2026-06-22
 
 Projects-layer alignment: the `project-design-guidance` skill now also consults the projects tracker (`docs/PROJECTS.md`) for current initiative focus + phase.

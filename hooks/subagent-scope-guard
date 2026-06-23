@@ -63,18 +63,17 @@ if command -v git >/dev/null 2>&1; then
             done <<< "$scope_lock_dirty"
         fi
 
-        # Last commit: did it touch scope-lock files?
-        if git rev-parse --verify HEAD >/dev/null 2>&1; then
-            last_commit_files=$(git diff-tree --no-commit-id -r --name-only HEAD 2>/dev/null || true)
-
-            lock_in_commit=$(printf '%s' "$last_commit_files" | grep '\.scope-lock$' || true)
-            if [ -n "$lock_in_commit" ]; then
-                while IFS= read -r f; do
-                    violations="${violations}  • Last commit modified scope-lock file: ${f}\n"
-                done <<< "$lock_in_commit"
-            fi
-
-        fi
+        # NOTE: we intentionally do NOT inspect HEAD's last commit for .scope-lock
+        # files. A committed .scope-lock is always legitimate: hooks/scope-lock-apply
+        # is the only sanctioned writer (the Write/Edit/MultiEdit tools are guarded
+        # against *.scope-lock paths by pre-tool-scope-guard), so any committed lock
+        # was produced by the scope-lock skill or the operator. Checking HEAD's last
+        # commit attributes that commit to whichever subagent stops next, false-
+        # positives on every subsequent subagent, and the old block message then
+        # instructed the subagent to `git revert` the legitimate lock — producing
+        # spurious revert/reapply commits (autonomous-dev-kit#86). Manifest drift is
+        # still enforced: by the uncommitted working-tree check above for in-flight
+        # writes, and by the push/PR + Stop hash guards for committed drift.
 
         # Locked plan files may be edited for design backports or notes, but
         # their Scope Manifest hash must still match the lock file.
@@ -126,17 +125,17 @@ fi
 
 [ -z "$violations" ] && exit 0
 
-block "Subagent stop blocked — protected files were modified:
+block "Subagent stop blocked — a protected file was modified during this subagent's run:
 
 ${violations}
-Subagents must not write .scope-lock files or change a Locked Scope Manifest
-without the amendment path. Non-manifest design backports are allowed if the
-manifest hash still verifies.
-
-Before this subagent's changes are accepted:
-  1. Revert unauthorized .scope-lock or manifest changes.
-  2. If a manifest change is genuinely needed, surface it to the lead agent and
-     go through the amendment path: recording-decisions → update manifest →
-     re-run alignment-check.
+Do NOT run any git command (no revert/reset/checkout) and do NOT attempt to
+'fix' this yourself — doing so has caused spurious revert/reapply commits in
+the past (autonomous-dev-kit#86). Instead:
+  1. Surface this finding to the lead agent in your final report and stop.
+  2. The lead decides whether the change is legitimate or needs the amendment
+     path (recording-decisions → update manifest → re-run alignment-check →
+     re-run scope-lock-apply).
+If the change predates this subagent's run (e.g. a pre-existing committed
+lock), it is legitimate and no action is needed.
 
 See skills/scope-lock/SKILL.md for the amendment path."
