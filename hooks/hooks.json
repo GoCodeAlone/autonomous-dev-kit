@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" session-start",
+            "command": "AUTODEV_HOOK=session-start; AUTODEV_ROOT=\"${AUTODEV_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}}}\"; for AUTODEV_ROOT_CAND in \"$AUTODEV_ROOT\" . \"$HOME/.codex/plugins/cache/autodev-marketplace/autodev\"/* \"$HOME/.claude/plugins/marketplace/autodev\"/*; do [ -n \"$AUTODEV_ROOT_CAND\" ] || continue; if [ -x \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" ]; then exec \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" \"$AUTODEV_HOOK\"; fi; done; printf '{}\\n'",
             "async": false
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" pre-tool-scope-guard",
+            "command": "AUTODEV_HOOK=pre-tool-scope-guard; AUTODEV_ROOT=\"${AUTODEV_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}}}\"; for AUTODEV_ROOT_CAND in \"$AUTODEV_ROOT\" . \"$HOME/.codex/plugins/cache/autodev-marketplace/autodev\"/* \"$HOME/.claude/plugins/marketplace/autodev\"/*; do [ -n \"$AUTODEV_ROOT_CAND\" ] || continue; if [ -x \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" ]; then exec \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" \"$AUTODEV_HOOK\"; fi; done; printf '{}\\n'",
             "timeout": 15
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" pretool-pr-review-reminder",
+            "command": "AUTODEV_HOOK=pretool-pr-review-reminder; AUTODEV_ROOT=\"${AUTODEV_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}}}\"; for AUTODEV_ROOT_CAND in \"$AUTODEV_ROOT\" . \"$HOME/.codex/plugins/cache/autodev-marketplace/autodev\"/* \"$HOME/.claude/plugins/marketplace/autodev\"/*; do [ -n \"$AUTODEV_ROOT_CAND\" ] || continue; if [ -x \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" ]; then exec \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" \"$AUTODEV_HOOK\"; fi; done; printf '{}\\n'",
             "timeout": 10
           }
         ]
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" pretool-demo-fidelity-guard",
+            "command": "AUTODEV_HOOK=pretool-demo-fidelity-guard; AUTODEV_ROOT=\"${AUTODEV_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}}}\"; for AUTODEV_ROOT_CAND in \"$AUTODEV_ROOT\" . \"$HOME/.codex/plugins/cache/autodev-marketplace/autodev\"/* \"$HOME/.claude/plugins/marketplace/autodev\"/*; do [ -n \"$AUTODEV_ROOT_CAND\" ] || continue; if [ -x \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" ]; then exec \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" \"$AUTODEV_HOOK\"; fi; done; printf '{}\\n'",
             "timeout": 10
           }
         ]
@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" record-activity",
+            "command": "AUTODEV_HOOK=record-activity; AUTODEV_ROOT=\"${AUTODEV_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}}}\"; for AUTODEV_ROOT_CAND in \"$AUTODEV_ROOT\" . \"$HOME/.codex/plugins/cache/autodev-marketplace/autodev\"/* \"$HOME/.claude/plugins/marketplace/autodev\"/*; do [ -n \"$AUTODEV_ROOT_CAND\" ] || continue; if [ -x \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" ]; then exec \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" \"$AUTODEV_HOOK\"; fi; done; printf '{}\\n'",
             "timeout": 10
           }
         ]
@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" posttool-pr-created",
+            "command": "AUTODEV_HOOK=posttool-pr-created; AUTODEV_ROOT=\"${AUTODEV_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}}}\"; for AUTODEV_ROOT_CAND in \"$AUTODEV_ROOT\" . \"$HOME/.codex/plugins/cache/autodev-marketplace/autodev\"/* \"$HOME/.claude/plugins/marketplace/autodev\"/*; do [ -n \"$AUTODEV_ROOT_CAND\" ] || continue; if [ -x \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" ]; then exec \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" \"$AUTODEV_HOOK\"; fi; done; printf '{}\\n'",
             "timeout": 10
           }
         ]
@@ -72,7 +72,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" prompt-strict-interpretation",
+            "command": "AUTODEV_HOOK=prompt-strict-interpretation; AUTODEV_ROOT=\"${AUTODEV_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}}}\"; for AUTODEV_ROOT_CAND in \"$AUTODEV_ROOT\" . \"$HOME/.codex/plugins/cache/autodev-marketplace/autodev\"/* \"$HOME/.claude/plugins/marketplace/autodev\"/*; do [ -n \"$AUTODEV_ROOT_CAND\" ] || continue; if [ -x \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" ]; then exec \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" \"$AUTODEV_HOOK\"; fi; done; printf '{}\\n'",
             "timeout": 10
           }
         ]
@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" portfolio-inventory-reminder",
+            "command": "AUTODEV_HOOK=portfolio-inventory-reminder; AUTODEV_ROOT=\"${AUTODEV_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}}}\"; for AUTODEV_ROOT_CAND in \"$AUTODEV_ROOT\" . \"$HOME/.codex/plugins/cache/autodev-marketplace/autodev\"/* \"$HOME/.claude/plugins/marketplace/autodev\"/*; do [ -n \"$AUTODEV_ROOT_CAND\" ] || continue; if [ -x \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" ]; then exec \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" \"$AUTODEV_HOOK\"; fi; done; printf '{}\\n'",
             "timeout": 10
           }
         ]
@@ -94,7 +94,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" completion-claim-guard",
+            "command": "AUTODEV_HOOK=completion-claim-guard; AUTODEV_ROOT=\"${AUTODEV_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}}}\"; for AUTODEV_ROOT_CAND in \"$AUTODEV_ROOT\" . \"$HOME/.codex/plugins/cache/autodev-marketplace/autodev\"/* \"$HOME/.claude/plugins/marketplace/autodev\"/*; do [ -n \"$AUTODEV_ROOT_CAND\" ] || continue; if [ -x \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" ]; then exec \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" \"$AUTODEV_HOOK\"; fi; done; printf '{}\\n'",
             "timeout": 30
           }
         ]
@@ -106,7 +106,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" subagent-scope-guard",
+            "command": "AUTODEV_HOOK=subagent-scope-guard; AUTODEV_ROOT=\"${AUTODEV_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}}}\"; for AUTODEV_ROOT_CAND in \"$AUTODEV_ROOT\" . \"$HOME/.codex/plugins/cache/autodev-marketplace/autodev\"/* \"$HOME/.claude/plugins/marketplace/autodev\"/*; do [ -n \"$AUTODEV_ROOT_CAND\" ] || continue; if [ -x \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" ]; then exec \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" \"$AUTODEV_HOOK\"; fi; done; printf '{}\\n'",
             "timeout": 15
           }
         ]
@@ -118,7 +118,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" pre-compact-snapshot",
+            "command": "AUTODEV_HOOK=pre-compact-snapshot; AUTODEV_ROOT=\"${AUTODEV_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-}}}}\"; for AUTODEV_ROOT_CAND in \"$AUTODEV_ROOT\" . \"$HOME/.codex/plugins/cache/autodev-marketplace/autodev\"/* \"$HOME/.claude/plugins/marketplace/autodev\"/*; do [ -n \"$AUTODEV_ROOT_CAND\" ] || continue; if [ -x \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" ]; then exec \"$AUTODEV_ROOT_CAND/hooks/run-hook.cmd\" \"$AUTODEV_HOOK\"; fi; done; printf '{}\\n'",
             "timeout": 10
           }
         ]
