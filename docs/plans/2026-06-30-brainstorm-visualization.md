@@ -44,6 +44,17 @@
 
 ---
 
+## Pressure-Proof Execution Protocol
+
+Behavior proof means an isolated subject applies the skill under pressure; it is not self-review.
+
+1. Prefer a native subagent/delegation tool when the current host exposes one.
+2. If native subagents are unavailable, use a fresh isolated host thread/session in the same worktree and paste the exact subject prompt.
+3. Capture the subject output and reviewer score in `docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md`.
+4. If no isolated subject can be run, stop before implementation and record the blocker; do not replace the proof with self-review.
+
+---
+
 ## Task 1: Integrated TDD Implementation
 
 **Files:**
@@ -92,7 +103,7 @@ hasE(){ grep -qiE "$2" "$1"; }
 
 has "$BRAIN" "Visual Companion" && pass "brainstorming has Visual Companion section" || bad "brainstorming missing Visual Companion section"
 has "$BRAIN" "just-in-time" && pass "visual companion offer is just-in-time" || bad "visual companion offer is not just-in-time"
-hasE "$BRAIN" 'not[ -]upfront|NOT upfront' && pass "visual companion is not offered upfront" || bad "visual companion upfront prohibition missing"
+hasE "$BRAIN" 'not[ -]upfront|never[ -]upfront|NOT upfront' && pass "visual companion is not offered upfront" || bad "visual companion upfront prohibition missing"
 has "$BRAIN" "per-question" && pass "visual decision is per-question" || bad "per-question decision rule missing"
 has "$BRAIN" "text remains the source of truth" && pass "text source-of-truth rule present" || bad "text source-of-truth rule missing"
 has "$BRAIN" "question batch" && pass "visual offer batch-budget rule present" || bad "visual offer batch-budget rule missing"
@@ -125,7 +136,7 @@ echo ""; echo "Results: $fail failure(s)"; [ "$fail" -eq 0 ]
 
 Run: `bash tests/brainstorm-visual-companion.sh`
 
-Expected RED:
+Expected RED representative failures (the full output may include additional missing-marker failures such as `just-in-time`, `per-question`, `question batch`, and `lazy-load`):
 
 ```text
 FAIL: brainstorming missing Visual Companion section
@@ -236,9 +247,9 @@ git commit -m "Add brainstorm visual companion guidance"
 - Create: `docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md`
 - Modify implementation files only if proof finds gaps.
 
-**Step 1: GREEN subject-agent pressure run**
+**Step 1: GREEN isolated-subject pressure run**
 
-Dispatch a subject agent with:
+Use the Pressure-Proof Execution Protocol above: native subagent if available; otherwise a fresh isolated host thread/session in the same worktree. Give the isolated subject this prompt:
 
 ```text
 Use `skills/brainstorming/SKILL.md` and, only if the skill instructs you to, `skills/brainstorming/visual-companion.md`.
@@ -306,7 +317,11 @@ If no implementation fix was needed, commit only the proof artifact.
 **Files:**
 - No production file changes expected unless validation finds a gap.
 
-**Step 1: Run targeted checks**
+**Step 1: Documentation validation note**
+
+This repo has no dedicated markdown renderer/spellchecker command. For markdown/doc changes, use the focused shell guard, `skill-cross-refs`, `no-machine-paths`, and manual editor preview where available.
+
+**Step 2: Run targeted checks**
 
 Run:
 
@@ -319,7 +334,7 @@ bash tests/no-machine-paths.sh
 
 Expected: all PASS / `Results: 0 failure(s)`.
 
-**Step 2: Run full documented suite**
+**Step 3: Run full documented suite**
 
 Run AGENTS.md commands:
 
@@ -337,9 +352,9 @@ bash tests/version-check.sh
 
 Expected: all PASS, `OK: All version files agree on version 6.6.1`.
 
-**Step 3: Commit validation fixes if needed**
+**Step 4: Commit validation fixes if needed**
 
-If Step 1-2 required edits:
+If Step 2-3 required edits:
 
 ```bash
 git add <changed-files>
@@ -348,7 +363,7 @@ git commit -m "Tighten visual companion validation"
 
 If no edits, no commit.
 
-**Step 4: PR body evidence**
+**Step 5: PR body evidence**
 
 PR body must include:
 
