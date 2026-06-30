@@ -18,6 +18,7 @@ Host-by-host capability matrix for the Autonomous Dev Kit skills system.
 | Host declaration for skill conditionals | `Host: claude-code` in CLAUDE.md | `Host: codex` in `~/.codex/AGENTS.md` | `Host: opencode` in `~/.config/opencode/AGENTS.md` | n/a | Auto-detected as `hermes-agent` | `Host: zed-agent` in `~/.config/zed/AGENTS.md` or `%APPDATA%\\Zed\\AGENTS.md` |
 | Skill discovery path (user scope) | `~/.claude/skills/` (personal skills); autodev installed to `~/.claude/plugins/marketplace/autodev/` via marketplace | `~/.agents/skills/` | `~/.config/opencode/skills/` | via plugin (no manual symlink) | `~/.hermes/skills/` (symlink or `hermes skills install`) | `~/.agents/skills/<skill-name>/` (flat; no namespace folder) |
 | Model tier vocabulary | role names → `haiku`/`sonnet`/`opus` (see `agents/model-tiers.md`) | role names → `gpt-5.4-mini`/`gpt-5.4`/`gpt-5.5` | role names → host-pass-through | role names → host-pass-through | role names → host-pass-through | role names → host-pass-through |
+| Visual companion output | ⚠️ markdown/Mermaid best-effort; browser deferred | ⚠️ markdown/Mermaid best-effort; browser deferred | ⚠️ markdown/Mermaid best-effort; browser deferred | ⚠️ markdown/Mermaid best-effort; browser deferred | ⚠️ markdown/Mermaid best-effort; browser deferred | ⚠️ markdown plus best-effort Mermaid rendering; browser deferred |
 
 ## Notes
 
@@ -30,6 +31,8 @@ Host-by-host capability matrix for the Autonomous Dev Kit skills system.
 **Cursor:** The `.cursor-plugin/plugin.json` manifest defines `skills`, `agents`, `commands`, and `hooks`. Installation is via `/plugin-add autodev` in the Cursor agent chat (same marketplace mechanism as Claude Code). Skill discovery path (user scope) is managed through the plugin; no manual symlink required.
 
 **Zed Agent:** Zed Skills apply only to Zed Agent, not ACP External Agents or Terminal Threads. Zed requires a flat skills layout, so ADK installs each `skills/<name>/` directory directly under `~/.agents/skills/` or `<worktree>/.agents/skills/`; project-local skills require a trusted worktree. Zed does not expose the Claude/Codex lifecycle hook contract for skill packages. Current Zed task hooks are narrower (`create_worktree` is the documented event), so ADK hook-driven reminders use manual skill fallbacks and optional Zed Tool Permissions on Zed.
+
+**Visual companion output:** Brainstorming may emit markdown, mockups, or Mermaid diagrams where useful, but rendered diagrams are best-effort and every visual needs a text fallback. Browser companion and click/event capture are deferred.
 
 ## Related files
 
