@@ -27,7 +27,7 @@ You MUST create a task for each of these items and complete them in order:
 
 1. **Explore project context** — check files, docs, recent commits
 2. **Apply project design guidance** — invoke `autodev:project-design-guidance`; read existing guidance or run its Q&A if no durable guidance exists
-3. **Offer the visual companion just-in-time** — never upfront; only when a question would genuinely be clearer shown than described
+3. **Watch for visual companion opportunities** — offer just-in-time, never upfront, only when a question would genuinely be clearer shown than described
 4. **Ask clarifying questions** — adaptive batching: group related questions to reduce round-trips; use targeted singles for follow-ups
 5. **Propose 2-3 approaches** — with trade-offs and your recommendation
 6. **List load-bearing assumptions explicitly** — every design rests on assumptions ("upstream API is idempotent", "single-tenant", "user has admin"); write them down so the adversarial reviewer can attack them

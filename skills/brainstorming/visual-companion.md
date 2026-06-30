@@ -2,7 +2,7 @@
 
 ## Lazy-load rule
 
-Load this guide only after the user accepts the Visual Companion or when composing a visual artifact. `SKILL.md remains authoritative`; this file provides examples, accessibility guidance, and fallback details.
+Load this guide only after the user accepts the Visual Companion, or when the user directly asks for a visual and you are composing that visual artifact. `SKILL.md remains authoritative`; this file provides examples, accessibility guidance, and fallback details.
 
 ## When to use visuals
 

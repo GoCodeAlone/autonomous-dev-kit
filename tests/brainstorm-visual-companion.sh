@@ -22,6 +22,8 @@ has "$BRAIN" "text remains the source of truth" && pass "text source-of-truth ru
 has "$BRAIN" "counts as one question batch" && pass "visual offer batch-budget rule present" || bad "visual offer batch-budget rule missing"
 has "$BRAIN" "lazy-load" && pass "guide lazy-load rule present" || bad "guide lazy-load rule missing"
 has "$BRAIN" "visual-companion.md" && pass "guide reference present" || bad "guide reference missing"
+has "$BRAIN" "do not re-offer unless the user raises visuals" && pass "decline no-reoffer rule present" || bad "decline no-reoffer rule missing"
+hasE "$BRAIN" 'stale.*retire or update|retire or update.*stale' && pass "stale visual retire/update rule present" || bad "stale visual retire/update rule missing"
 
 [ -f "$GUIDE" ] && pass "visual companion guide exists" || bad "visual companion guide missing"
 if [ -f "$GUIDE" ]; then

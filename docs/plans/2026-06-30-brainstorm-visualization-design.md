@@ -127,7 +127,7 @@
 
 | boundary | proof |
 |---|---|
-| Skill behavior | Subagent pressure proof against `expected-behavior.md` → PASS for four paths. |
+| Skill behavior | Subagent pressure proof against `expected-behavior.md` → PASS for five paths. |
 | Skill behavior markers | `bash tests/brainstorm-visual-companion.sh` → asserts just-in-time/not-upfront/per-question/text fallback/lazy-load/guide/fixture/coverage contract. |
 | Skill text ↔ content rules | `bash tests/skill-content-grep.sh` → host-neutral token guard passes. |
 | Skill refs ↔ repo files | `bash tests/skill-cross-refs.sh` → references resolve. |
