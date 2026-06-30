@@ -29,6 +29,8 @@ if [ -f "$GUIDE" ]; then
   has "$GUIDE" "accessibility" && pass "guide mentions accessibility" || bad "guide missing accessibility guidance"
   has "$GUIDE" "fallback" && pass "guide mentions fallback" || bad "guide missing fallback guidance"
   has "$GUIDE" "secrets" && pass "guide forbids secrets" || bad "guide missing secrets guidance"
+  has "$GUIDE" "PII" && pass "guide forbids PII" || bad "guide missing PII guidance"
+  hasE "$GUIDE" 'synthetic|redacted' && pass "guide requires synthetic or redacted content" || bad "guide missing synthetic/redacted guidance"
   has "$GUIDE" "SKILL.md remains authoritative" && pass "guide is bounded by SKILL.md authority" || bad "guide authority boundary missing"
 fi
 
@@ -40,15 +42,26 @@ if [ -f "$FIXTURE" ]; then
   has "$FIXTURE" "counts as one question batch" && pass "fixture covers visual offer batch budget" || bad "fixture missing visual offer batch budget"
 fi
 
-visual_row="$(grep -i '^| Visual companion output |' "$CAPS" || true)"
-if [ -n "$visual_row" ]; then
-  count="$(printf '%s' "$visual_row" | grep -oi 'browser deferred' | wc -l | tr -d ' ')"
-  [ "$count" -ge 6 ] && pass "visual companion row defers browser for all hosts" || bad "visual companion row missing per-host browser deferral"
+if awk -F'|' '
+  BEGIN { rows = 0; ok = 0 }
+  /^\| Visual companion output \|/ {
+    rows++
+    row_ok = (NF >= 9)
+    for (i = 3; i <= 8; i++) {
+      cell = tolower($i)
+      if (cell !~ /browser deferred/) { row_ok = 0 }
+    }
+    if (row_ok) { ok = 1 }
+  }
+  END { exit !(rows == 1 && ok == 1) }
+' "$CAPS"; then
+  pass "visual companion row defers browser for all hosts"
 else
-  bad "capability matrix missing Visual companion output row"
+  bad "visual companion row missing per-host browser deferral"
 fi
 
 has "$AGENTS" "tests/brainstorm-visual-companion.sh" && pass "AGENTS documents visual companion test" || bad "AGENTS missing visual companion test"
+has "$BRAIN" "PII" && pass "brainstorming skill forbids PII" || bad "brainstorming skill missing PII guidance"
 has "$CAPS" "Visual companion" && pass "capability matrix includes visual companion" || bad "capability matrix missing visual companion"
 has "$SKILL_COVERAGE" "visual companion" && pass "skill coverage notes visual companion" || bad "skill coverage missing visual companion note"
 
