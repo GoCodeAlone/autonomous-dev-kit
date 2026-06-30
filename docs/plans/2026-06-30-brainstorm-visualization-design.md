@@ -2,7 +2,7 @@
 
 **Issue:** #78 — Brainstorm visualization
 **Date:** 2026-06-30
-**Status:** Approved by user instruction; revised after adversarial review cycles 1-2
+**Status:** Approved by user instruction; revised after adversarial review cycles 1-3
 **ADR:** `decisions/0005-visual-companion-instructions.md`
 
 ## Original Ask
@@ -34,7 +34,7 @@
 
 | host | Markdown text | Mermaid/rendered diagrams | Browser companion |
 |---|---|---|---|
-| `zed-agent` | runtime-integrated: markdown chat output | runtime-integrated where Zed renders Mermaid in assistant markdown; must include text fallback | deferred |
+| `zed-agent` | runtime-integrated: markdown chat output | config-only/best-effort unless rendered output is explicitly observed; must include text fallback | deferred |
 | `claude-code` | config-only: markdown output | config-only/best-effort: render support varies by surface | deferred |
 | `codex` | config-only: markdown output | config-only/best-effort | deferred |
 | `opencode` | config-only: markdown output | config-only/best-effort | deferred |
@@ -68,25 +68,27 @@
   - RED before implementation: required skill markers/guide/fixture/coverage rows absent.
   - GREEN after implementation: asserts just-in-time offer, not-upfront rule, per-question decision, text fallback/source of truth, lazy-load rule, guide existence, guide mentions Mermaid plus accessibility/fallback, behavior fixture exists, and coverage/docs checks include visual companion.
 - Add behavior fixture `skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md`:
-  - Records pressure scenario and expected compliant behavior for four paths: conceptual text-only, visual offer in its own message, declined offer/no re-offer, accepted visual with text fallback.
+  - Records pressure scenario and expected compliant behavior for five paths: conceptual text-only, visual offer in its own message, declined offer/no re-offer, accepted visual with text fallback, and stale/contradictory visual after a changed decision.
   - Includes RED baseline notes against pre-change brainstorming: no visual companion rule exists, so the expected just-in-time offer and fallback paths are absent.
 - Run behavior proof with a subagent after implementation:
   - Prompt a reviewer with the fixture and current `skills/brainstorming/SKILL.md`.
-  - Expected: reviewer reports PASS for all four paths and cites the exact skill/guide lines that force the behavior.
+  - Expected: reviewer reports PASS for all five paths and cites the exact skill/guide lines that force the behavior.
   - This is the primary behavior proof; shell test is the regression guard.
 - Update durable docs:
   - `AGENTS.md`: add `bash tests/brainstorm-visual-companion.sh` to skill content checks.
   - `docs/cross-llm-coverage.md`: add visual companion capability row.
   - `tests/cross-llm-coverage.md`: update brainstorming notes with visual companion host-neutral/best-effort behavior.
+  - `docs/FOLLOWUPS.md`: record deferred browser/event-capture parity as a follow-up so #78 scope reduction is durable.
 
 ## Behavior Fixture Expected Paths
 
 | path | compliant behavior |
 |---|---|
 | Conceptual text-only question | Do not offer visual companion; ask/answer in text because the answer is conceptual. |
-| Visual question arises | Send only the just-in-time offer message; no bundled clarifying question. |
+| Visual question arises | Send only the just-in-time offer message; no bundled clarifying question; the offer counts as one question batch. |
 | User declines | Continue text-only and do not offer again unless user raises visuals. |
 | User accepts | Use the guide only when composing visuals; include text summary/fallback; record final decision in text. |
+| Decision changes after visual | Retire or update stale/contradictory visual; preserve text as source of truth. |
 
 ## Failure Rules
 
@@ -131,7 +133,7 @@
 | Skill refs ↔ repo files | `bash tests/skill-cross-refs.sh` → references resolve. |
 | Coverage docs | `bash tests/brainstorm-visual-companion.sh` checks visual rows/notes exist. |
 | Full repo contract | Run AGENTS.md test list before PR. |
-| Runtime rendering | Deferred except Zed markdown/Mermaid support where observed by host; all other hosts use text fallback and are marked config-only/best-effort. |
+| Runtime rendering | Mermaid/rendered diagrams are config-only/best-effort unless a host-rendered output is explicitly observed; text fallback is required everywhere. |
 
 ## Assumptions
 
@@ -165,7 +167,11 @@
 | D7 | Add durable coverage doc updates. |
 | D8 | Add focused test to documented `AGENTS.md` checks. |
 | D9 | Add lazy-load rule to SKILL.md/guide/test. |
+| D10 | Downgrade Mermaid rendering to config-only/best-effort unless explicitly observed. |
+| D11 | Visual-companion offer counts as a question batch. |
+| D12 | Add negative stale/contradictory-visual fixture path. |
+| D13 | Add `docs/FOLLOWUPS.md` entry for deferred browser/event-capture parity. |
 
 ## Rollback
 
-Revert commits modifying `skills/brainstorming/SKILL.md`, `skills/brainstorming/visual-companion.md`, `skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md`, `tests/brainstorm-visual-companion.sh`, `docs/cross-llm-coverage.md`, `tests/cross-llm-coverage.md`, `AGENTS.md`, and planning/ADR artifacts; rerun AGENTS.md test list. No runtime state, migrations, or version pins.
+Revert commits modifying `skills/brainstorming/SKILL.md`, `skills/brainstorming/visual-companion.md`, `skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md`, `tests/brainstorm-visual-companion.sh`, `docs/cross-llm-coverage.md`, `tests/cross-llm-coverage.md`, `docs/FOLLOWUPS.md`, `AGENTS.md`, and planning/ADR artifacts; rerun AGENTS.md test list. No runtime state, migrations, or version pins.
