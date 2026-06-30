@@ -1,5 +1,13 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.6.1 — 2026-06-30
+
+Zed WSL2 install fix.
+
+- Updated the Zed Bash installer so global installs run from WSL2 target the Windows profile skills root (`/mnt/c/Users/<user>/.agents/skills`) when a matching Windows profile exists, using copy mode so Windows-native Zed can read the skill files directly.
+- Added installer output that verifies the number of direct child `SKILL.md` files written and points users to Zed's User-scope skill creator path when discovery still fails.
+- Expanded Zed install docs with WSL2 + Windows-native Zed instructions and troubleshooting for mismatched shell/Zed home directories.
+
 ## v6.6.0 — 2026-06-30
 
 Zed Agent support release.

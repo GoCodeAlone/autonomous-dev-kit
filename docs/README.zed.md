@@ -11,6 +11,15 @@ git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git ~/.agents/autode
 ~/.agents/autodev/scripts/install-zed.sh
 ```
 
+WSL2 with Windows-native Zed: use the same Bash installer. It detects WSL and
+copies skills to `/mnt/c/Users/<linux-user>/.agents/skills`, the Windows path
+Zed sees as `C:\Users\<user>\.agents\skills`. If your Windows username differs
+from your WSL username, pass it explicitly:
+
+```bash
+~/.agents/autodev/scripts/install-zed.sh --skills-root /mnt/c/Users/<WindowsUser>/.agents/skills --copy --force
+```
+
 Global install on Windows PowerShell:
 
 ```powershell

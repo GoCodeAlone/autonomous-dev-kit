@@ -35,6 +35,12 @@ git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git ~/.agents/autode
 ~/.agents/autodev/scripts/install-zed.sh
 ```
 
+**WSL2 with Windows-native Zed:** run the same Bash installer from WSL. It detects WSL and, when `/mnt/c/Users/<linux-user>` exists, copies the skills into the Windows profile path Zed scans: `/mnt/c/Users/<linux-user>/.agents/skills` (`C:\Users\<user>\.agents\skills`). If your Windows username differs from your WSL username, pass it explicitly:
+
+```bash
+~/.agents/autodev/scripts/install-zed.sh --skills-root /mnt/c/Users/<WindowsUser>/.agents/skills --copy --force
+```
+
 **Windows (PowerShell):**
 
 ```powershell
@@ -67,6 +73,22 @@ git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git .autodev-kit
 Project-local Zed skills are written under `<worktree>/.agents/skills/` and load only after Zed trusts the worktree.
 
 Then open Zed's **AI > Skills** page or start a new Zed Agent thread and ask `help me plan this feature`. Skills live-reload; start a fresh thread if the catalog was already cached.
+
+If Zed says **no global skills are installed** after the installer reports success:
+
+1. In Zed, open **AI > Skills**, choose the **User** tab, and click **Create Skill**.
+2. Note the directory Zed says it will write the skill to. That is the global skills root Zed is actually scanning.
+3. Rerun the installer with that exact path:
+
+   ```bash
+   ~/.agents/autodev/scripts/install-zed.sh --skills-root /exact/path/from/zed --copy --force
+   ```
+
+   ```powershell
+   & "$env:USERPROFILE\.agents\autodev\scripts\install-zed.ps1" -SkillsRoot "C:\exact\path\from\zed" -Copy -Force
+   ```
+
+This usually means the installer ran under a different home directory than Zed uses, such as MSYS/Git Bash, a remote shell, or another sandboxed environment. For WSL2 with Windows-native Zed, use the WSL-aware Bash installer or the explicit `/mnt/c/Users/<WindowsUser>/.agents/skills` command above.
 
 **Detailed docs:** [`.zed/INSTALL.md`](.zed/INSTALL.md), [`docs/README.zed.md`](docs/README.zed.md), and [`docs/zed-hook-equivalents.md`](docs/zed-hook-equivalents.md)
 

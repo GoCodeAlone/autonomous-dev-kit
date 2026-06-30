@@ -23,6 +23,12 @@ param(
     [switch]$Uninstall
 )
 
+<#
+If Zed's AI > Skills page says no global skills are installed, open Create
+Skill in Zed's User tab and note the directory Zed says it will write to.
+Then rerun this installer with -SkillsRoot set to that exact skills root.
+#>
+
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -105,6 +111,17 @@ if ($failures -gt 0) {
 if ($Uninstall) {
     Write-Host "Autonomous Dev Kit Zed skills removed from $SkillsRoot"
 } else {
+    $installedSkillFiles = @(Get-ChildItem -LiteralPath $SkillsRoot -Directory -ErrorAction SilentlyContinue | Where-Object {
+        Test-Path -LiteralPath (Join-Path $_.FullName "SKILL.md")
+    })
+
     Write-Host "Autonomous Dev Kit Zed skills installed in $SkillsRoot"
+    if ($installedSkillFiles.Count -gt 0) {
+        $example = Join-Path $installedSkillFiles[0].FullName "SKILL.md"
+        Write-Host "Verified $($installedSkillFiles.Count) direct child SKILL.md file(s); for example: $example"
+    } else {
+        Write-Warning "No direct child SKILL.md files found under $SkillsRoot"
+    }
     Write-Host "Open Zed's AI > Skills page or start a new Zed Agent thread to verify discovery."
+    Write-Host "If Zed still reports no global skills, rerun with -Copy -Force and/or -SkillsRoot set to the exact path shown by Zed's User-scope skill creator."
 }

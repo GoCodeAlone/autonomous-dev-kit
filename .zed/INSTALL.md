@@ -36,6 +36,23 @@ git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git ~/.agents/autode
 ~/.agents/autodev/scripts/install-zed.sh
 ```
 
+WSL2 with Windows-native Zed:
+
+```bash
+git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git ~/.agents/autodev
+~/.agents/autodev/scripts/install-zed.sh
+```
+
+When run under WSL, the Bash installer detects a matching Windows profile at
+`/mnt/c/Users/<linux-user>` and copies the skills to
+`/mnt/c/Users/<linux-user>/.agents/skills`, which is
+`C:\Users\<user>\.agents\skills` from Windows Zed's perspective. If your
+Windows username differs from your WSL username, pass the path explicitly:
+
+```bash
+~/.agents/autodev/scripts/install-zed.sh --skills-root /mnt/c/Users/<WindowsUser>/.agents/skills --copy --force
+```
+
 Windows PowerShell:
 
 ```powershell
@@ -134,6 +151,47 @@ In Zed:
 
 Zed live-reloads skill edits. Restart is usually unnecessary, but starting a fresh
 thread can make catalog changes clearer to the model.
+
+## Troubleshooting: Zed says no global skills are installed
+
+If the installer reports success but **AI > Skills** shows no User/global skills,
+Zed is probably reading a different home directory than the shell that ran the
+installer. This is common when installing from MSYS, Git Bash, a remote shell,
+or another sandbox while running a different Zed binary. WSL2 with
+Windows-native Zed is handled automatically when the Windows profile matches
+the WSL username; otherwise pass the `/mnt/c/Users/<WindowsUser>/.agents/skills`
+path explicitly.
+
+Use Zed as the source of truth for the path:
+
+1. Open **AI > Skills**.
+2. Select the **User** tab.
+3. Click **Create Skill**.
+4. Note the folder Zed says it will save the skill under. Use the parent
+   `skills` directory as the installer target.
+
+Then rerun ADK's installer with that exact skills root. Prefer copy mode for
+troubleshooting so filesystem links are not another variable:
+
+```bash
+~/.agents/autodev/scripts/install-zed.sh --skills-root /exact/path/from/zed --copy --force
+```
+
+```powershell
+& "$env:USERPROFILE\.agents\autodev\scripts\install-zed.ps1" -SkillsRoot "C:\exact\path\from\zed" -Copy -Force
+```
+
+The target must contain direct child skill folders like:
+
+```text
+<skills-root>/brainstorming/SKILL.md
+<skills-root>/writing-plans/SKILL.md
+<skills-root>/using-autodev/SKILL.md
+```
+
+Do not point Zed at `~/.agents/autodev`, `~/.agents/autodev/skills`, or a nested
+`~/.agents/skills/autodev/` folder; Zed only discovers skills that are direct
+children of the skills root.
 
 ## Updating
 
