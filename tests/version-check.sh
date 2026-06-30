@@ -24,6 +24,7 @@ VERSION_FILES=(
   ".claude-plugin/plugin.json"
   ".claude-plugin/marketplace.json"
   ".cursor-plugin/plugin.json"
+  ".hermes/plugin.json"
 )
 
 extract_version() {

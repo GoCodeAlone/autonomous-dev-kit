@@ -88,6 +88,11 @@ digraph brainstorming {
   - Group no more than 3 questions per turn to avoid overloading the chat
   </host>
 
+  <host: hermes-agent>
+  - Use the `clarify` tool for multiple-choice questions (up to 4 options)
+  - Group no more than 3 questions per turn to avoid overloading the chat
+  </host>
+
 - Focus on understanding: purpose, constraints, success criteria
 
 **Exploring approaches:**

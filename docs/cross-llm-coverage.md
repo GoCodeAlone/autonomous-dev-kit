@@ -4,20 +4,20 @@ Host-by-host capability matrix for the Autonomous Dev Kit skills system.
 
 `✅` = fully supported  `⚠️` = partial / workaround required  `❌` = not supported
 
-| Capability | Claude Code | Codex CLI | OpenCode | Cursor |
-|---|---|---|---|---|
-| SKILL.md import | ✅ native | ✅ native | ✅ native | ✅ plugin manifest defines skills/agents/commands/hooks; install via `/plugin-add autodev` |
-| Sub-agent dispatch | ✅ `Agent` tool | ✅ natural language | ⚠️ `@mention` to peer sessions | ❌ not documented |
-| Agent Teams (persistent multi-agent DM) | ✅ experimental flag | ❌ | ❌ | ❌ |
-| Background agents | ✅ `run_in_background` | ⚠️ thread-based; no explicit background flag | ❌ not documented | ❌ not documented |
-| MCP servers | ✅ | ✅ `config.toml` | ✅ | ⚠️ partial |
-| Slash commands | ✅ | ✅ 30+ built-ins incl. `/plan`, `/agent`, `/review` | ✅ | ✅ |
-| Plan mode | ✅ `EnterPlanMode` + Shift-Tab | ✅ `/plan` slash | ⚠️ not documented; use prose planning | ⚠️ built-in Composer; not slash-invokable |
-| Task list / TodoWrite | ✅ built-in | ❌ no documented equivalent | ⚠️ `update_plan` mapping (see `.opencode/INSTALL.md`) | ⚠️ unknown |
-| AGENTS.md / project context | CLAUDE.md | AGENTS.md (+ `.override.md`) | AGENTS.md | n/a |
-| Host declaration for skill conditionals | `Host: claude-code` in CLAUDE.md | `Host: codex` in `~/.codex/AGENTS.md` | `Host: opencode` in `~/.config/opencode/AGENTS.md` | n/a |
-| Skill discovery path (user scope) | `~/.claude/skills/` (personal skills); autodev installed to `~/.claude/plugins/marketplace/autodev/` via marketplace | `~/.agents/skills/` | `~/.config/opencode/skills/` | via plugin (no manual symlink) |
-| Model tier vocabulary | role names → `haiku`/`sonnet`/`opus` (see `agents/model-tiers.md`) | role names → `gpt-5.4-mini`/`gpt-5.4`/`gpt-5.5` | role names → host-pass-through | role names → host-pass-through |
+| Capability | Claude Code | Codex CLI | OpenCode | Cursor | Hermes Agent |
+|---|---|---|---|---|---|
+| SKILL.md import | ✅ native | ✅ native | ✅ native | ✅ plugin manifest defines skills/agents/commands/hooks; install via `/plugin-add autodev` | ✅ native via `~/.hermes/skills/` symlink or `hermes skills install` |
+| Sub-agent dispatch | ✅ `Agent` tool | ✅ natural language | ⚠️ `@mention` to peer sessions | ❌ not documented | ✅ `delegate_task` tool |
+| Agent Teams (persistent multi-agent DM) | ✅ experimental flag | ❌ | ❌ | ❌ | ❌ (uses sequential `delegate_task`) |
+| Background agents | ✅ `run_in_background` | ⚠️ thread-based; no explicit background flag | ❌ not documented | ❌ not documented | ✅ `terminal(background=true)` |
+| MCP servers | ✅ | ✅ `config.toml` | ✅ | ⚠️ partial | ✅ `hermes mcp` |
+| Slash commands | ✅ | ✅ 30+ built-ins incl. `/plan`, `/agent`, `/review` | ✅ | ✅ | ✅ 40+ built-ins |
+| Plan mode | ✅ `EnterPlanMode` + Shift-Tab | ✅ `/plan` slash | ⚠️ not documented; use prose planning | ⚠️ built-in Composer; not slash-invokable | ⚠️ prose planning in chat |
+| Task list / TodoWrite | ✅ built-in | ❌ no documented equivalent | ⚠️ `update_plan` mapping (see `.opencode/INSTALL.md`) | ⚠️ unknown | ✅ `todo` tool (built-in) |
+| AGENTS.md / project context | CLAUDE.md | AGENTS.md (+ `.override.md`) | AGENTS.md | n/a | AGENTS.md (cwd only), `.hermes.md` (parent walk) |
+| Host declaration for skill conditionals | `Host: claude-code` in CLAUDE.md | `Host: codex` in `~/.codex/AGENTS.md` | `Host: opencode` in `~/.config/opencode/AGENTS.md` | n/a | Auto-detected as `hermes-agent` |
+| Skill discovery path (user scope) | `~/.claude/skills/` (personal skills); autodev installed to `~/.claude/plugins/marketplace/autodev/` via marketplace | `~/.agents/skills/` | `~/.config/opencode/skills/` | via plugin (no manual symlink) | `~/.hermes/skills/` (symlink or `hermes skills install`) |
+| Model tier vocabulary | role names → `haiku`/`sonnet`/`opus` (see `agents/model-tiers.md`) | role names → `gpt-5.4-mini`/`gpt-5.4`/`gpt-5.5` | role names → host-pass-through | role names → host-pass-through | role names → config model (provider-agnostic) |
 
 ## Notes
 

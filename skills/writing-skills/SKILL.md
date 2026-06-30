@@ -95,7 +95,7 @@ skills/
 ## Host-Conditional Sections
 
 Skills may need different content per host (Claude Code, Codex, OpenCode,
-Cursor). Use `<host: …>` markers to gate host-specific prose. Markers must
+Cursor, Hermes Agent). Use `<host: …>` markers to gate host-specific prose. Markers must
 appear on their own lines (the guard only recognises them at line start, after
 optional whitespace). Sections without a marker apply to every host.
 
@@ -106,8 +106,8 @@ optional whitespace). Sections without a marker apply to every host.
 …content for Claude Code only…
 </host>
 
-<host: codex, opencode>
-…content shared between Codex and OpenCode…
+<host: codex, opencode, cursor, hermes-agent>
+…content shared between Codex, OpenCode, Cursor and Hermes Agent…
 </host>
 ```
 
@@ -134,6 +134,7 @@ misspelled or unclosed. Visibility is the safer trade-off.
 - `codex` — OpenAI Codex CLI
 - `opencode` — OpenCode.ai
 - `cursor` — Cursor
+- `hermes-agent` — Hermes Agent (Nous Research)
 
 Use exactly these strings. Adding a new host means updating this list, the
 grep guard's skip logic, and `agents/model-tiers.md`.

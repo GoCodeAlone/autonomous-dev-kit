@@ -141,6 +141,10 @@ This is short, structured analysis work — one pass over the artifacts. Run inl
 Run inline. The lead agent has the context already. The retro is a structured artifact, not a long-running task — produce the markdown directly.
 </host>
 
+<host: hermes-agent>
+Run inline. The lead agent has the context already. The retro is a structured artifact, not a long-running task — produce the markdown directly.
+</host>
+
 ## Why this skill exists
 
 `pr-monitoring` exits when CI is green and reviews are resolved. That's the end of the in-flight pipeline, but it's not the end of the loop. Without `post-merge-retrospective`, the plugin has no organic way to know which gates are actually pulling their weight. With it, every merged PR produces a small piece of evidence that gets compared across PRs over time. That's how the gate set sharpens.

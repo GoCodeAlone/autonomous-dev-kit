@@ -61,6 +61,13 @@ per turn and re-check on the next turn. This loses fire-on-event but is reliable
 dispatch a background Agent expecting it to block on a sleep-loop.
 </host>
 
+<host: hermes-agent>
+Use `terminal(background=true, notify_on_complete=true)` with a bounded bash sleep-loop
+(same pattern as the Claude Code bash poll-loop above) that polls `gh pr checks <pr>`
+until settled. The Hermes `terminal` tool genuinely blocks to completion in background mode.
+Use `process(action='poll')` to check status and `process(action='log')` to read results.
+</host>
+
 **Fallback (all hosts):** the background-Agent monitor in "The Process" below remains the
 tool for multi-PR review-comment handling that needs active fix-and-push; note its
 early-exit failure mode and prefer the poll-loop / self-poll for a pure CI-wait.
@@ -282,6 +289,24 @@ with a **10-minute** wait between full cycles and a **60-minute** total session 
 When the 60-minute limit is reached before all PRs are clean, write a timeout
 status report listing which PRs still need attention, then exit. The orchestrator
 should start a new monitor for the remaining PRs.
+
+When a PR has merged with green base-branch CI and a design + plan exist in
+`docs/plans/` for its branch, invoke `autodev:post-merge-retrospective` to
+write a retro in `docs/retros/`. If the PR was closed without merge, skip the
+retro and exit cleanly.
+
+</host>
+
+<host: hermes-agent>
+
+Use `terminal` to run `gh pr checks <number>` and fix failing CI checks. For
+background monitoring, use `terminal(background=true, notify_on_complete=true)`
+with a bounded sleep-loop (same pattern as the Claude Code bash poll-loop above).
+Use `process(action='poll')` and `process(action='log')` to read results.
+
+Follow the same poll cycle: 10-minute wait between full cycles, 60-minute total
+session cap. Use a separate worktree per branch so you never switch branches
+mid-session.
 
 When a PR has merged with green base-branch CI and a design + plan exist in
 `docs/plans/` for its branch, invoke `autodev:post-merge-retrospective` to
