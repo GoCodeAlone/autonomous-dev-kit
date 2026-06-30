@@ -26,6 +26,7 @@ bash tests/skill-content-grep.sh
 bash tests/adk-path-canonicalization.sh
 bash tests/pipeline-evidence-doc-sync.sh
 bash tests/skill-cross-refs.sh
+bash tests/brainstorm-visual-companion.sh
 
 # Hook contract tests
 bash tests/hook-contracts.sh

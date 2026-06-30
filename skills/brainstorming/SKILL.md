@@ -27,14 +27,15 @@ You MUST create a task for each of these items and complete them in order:
 
 1. **Explore project context** — check files, docs, recent commits
 2. **Apply project design guidance** — invoke `autodev:project-design-guidance`; read existing guidance or run its Q&A if no durable guidance exists
-3. **Ask clarifying questions** — adaptive batching: group related questions to reduce round-trips; use targeted singles for follow-ups
-4. **Propose 2-3 approaches** — with trade-offs and your recommendation
-5. **List load-bearing assumptions explicitly** — every design rests on assumptions ("upstream API is idempotent", "single-tenant", "user has admin"); write them down so the adversarial reviewer can attack them
-6. **Self-challenge round** — before presenting to the user, role-play a skeptic against your own design and surface the top 3 doubts (see "Self-challenge round" below). Cleans up obvious issues before the user sees the design.
-7. **Present design** — in sections scaled to their complexity, get user approval after each section. Include the assumption list, project-guidance fit, and the top doubts surfaced by the self-challenge so the user sees them.
-8. **Write design doc** — save to `docs/plans/YYYY-MM-DD-<topic>-design.md` and commit. Use `autodev:condensed-pipeline-writing` for internal density. The doc MUST include `## Global Design Guidance`, `## Security Review`, `## Infrastructure Impact`, `## Multi-Component Validation`, `## Assumptions`, and a `## Rollback` section for change classes that affect runtime (build, deployment, version pins, startup config, migrations, plugin loading paths) — same trigger list as `runtime-launch-validation`.
-9. **Adversarial design review** — invoke `adversarial-design-review --phase=design`. On FAIL, revise per tangible Critical/Important findings and re-run until the review converges to no tangible issues (remaining nitpicks become Minor PASS items). On PASS, proceed.
-10. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+3. **Watch for visual companion opportunities** — offer just-in-time, never upfront, only when a question would genuinely be clearer shown than described
+4. **Ask clarifying questions** — adaptive batching: group related questions to reduce round-trips; use targeted singles for follow-ups
+5. **Propose 2-3 approaches** — with trade-offs and your recommendation
+6. **List load-bearing assumptions explicitly** — every design rests on assumptions ("upstream API is idempotent", "single-tenant", "user has admin"); write them down so the adversarial reviewer can attack them
+7. **Self-challenge round** — before presenting to the user, role-play a skeptic against your own design and surface the top 3 doubts (see "Self-challenge round" below). Cleans up obvious issues before the user sees the design.
+8. **Present design** — in sections scaled to their complexity, get user approval after each section. Include the assumption list, project-guidance fit, and the top doubts surfaced by the self-challenge so the user sees them.
+9. **Write design doc** — save to `docs/plans/YYYY-MM-DD-<topic>-design.md` and commit. Use `autodev:condensed-pipeline-writing` for internal density. The doc MUST include `## Global Design Guidance`, `## Security Review`, `## Infrastructure Impact`, `## Multi-Component Validation`, `## Assumptions`, and a `## Rollback` section for change classes that affect runtime (build, deployment, version pins, startup config, migrations, plugin loading paths) — same trigger list as `runtime-launch-validation`.
+10. **Adversarial design review** — invoke `adversarial-design-review --phase=design`. On FAIL, revise per tangible Critical/Important findings and re-run until the review converges to no tangible issues (remaining nitpicks become Minor PASS items). On PASS, proceed.
+11. **Transition to implementation** — invoke writing-plans skill to create implementation plan
 
 ## Process Flow
 
@@ -42,6 +43,7 @@ You MUST create a task for each of these items and complete them in order:
 digraph brainstorming {
     "Explore project context" [shape=box];
     "Apply project guidance" [shape=box];
+    "Offer visual companion if useful" [shape=box];
     "Ask clarifying questions" [shape=box];
     "Propose 2-3 approaches" [shape=box];
     "List assumptions" [shape=box];
@@ -53,7 +55,8 @@ digraph brainstorming {
     "Invoke writing-plans skill" [shape=doublecircle];
 
     "Explore project context" -> "Apply project guidance";
-    "Apply project guidance" -> "Ask clarifying questions";
+    "Apply project guidance" -> "Offer visual companion if useful";
+    "Offer visual companion if useful" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
     "Propose 2-3 approaches" -> "List assumptions";
     "List assumptions" -> "Self-challenge round";
@@ -74,6 +77,9 @@ digraph brainstorming {
 **Understanding the idea:**
 - Check out the current project state first (files, docs, recent commits)
 - Invoke `autodev:project-design-guidance` before finalizing questions or approaches. If no durable guidance exists, ask the guidance Q&A first so the feature-specific brainstorm is not designed in isolation.
+- Offer the visual companion just-in-time, not upfront. Only offer when the next question would genuinely be clearer shown than described, and send only the offer in that message; the offer counts as one question batch. If the user declines, continue text-only and do not re-offer unless the user raises visuals.
+- Decide per-question whether visuals help. Use visuals for mockups, Mermaid diagrams, flows, state diagrams, architecture maps, or side-by-side layout comparisons. Stay text-only for requirements, conceptual choices, tradeoff tables, and scope decisions.
+- If the user accepts, lazy-load `skills/brainstorming/visual-companion.md` only while composing visual artifacts. Text remains the source of truth; every visual needs a concise text fallback.
 - Ask questions using adaptive batching — group related questions to reduce round-trips:
   - **First batch:** covers purpose, constraints, scope, and tech choices
   - **Follow-ups:** Targeted single questions based on interesting or ambiguous answers
@@ -123,6 +129,20 @@ Ask yourself, in order, and keep notes:
 If any answer surfaces a real issue, revise the design before presenting it. Otherwise, surface the top 3 doubts to the user when you present (so they can decide whether the trade-offs are acceptable). This is a 30-second exercise, not a debate.
 
 This is intentionally lightweight; the heavyweight pass is `adversarial-design-review`, which runs after the design is committed.
+
+## Visual Companion
+
+Visuals are a tool, not a mode. Use them only when seeing the option, flow, relationship, or layout would help the user decide better than prose.
+
+**Offer rule:** The first visual-companion offer is just-in-time and never upfront. The offer must be its own message, counts as one question batch, and asks whether the user wants a visual aid. Do not bundle another clarifying question into the same message.
+
+**Use visuals for:** mockups, wireframes, Mermaid diagrams, state flows, entity relationships, architecture maps, spatial comparisons, and side-by-side visual design options.
+
+**Stay text-only for:** requirements questions, conceptual choices, tradeoff lists, scope decisions, implementation approaches, or any question where the answer is words rather than a visual preference.
+
+**Fallback and correctness:** text remains the source of truth. Every visual must include a concise text equivalent. If Mermaid is invalid or unsupported, continue in plain text and do not claim rendered proof. If a visual becomes stale or contradicts a later text decision, retire or update it before proceeding. Do not include secrets or PII in diagrams or mockups.
+
+**Guide loading:** lazy-load `skills/brainstorming/visual-companion.md` only after the user accepts the companion or when composing a visual artifact. `SKILL.md` remains authoritative; the guide provides examples, accessibility rules, and fallback details.
 
 ## Question-batch budget (cost-control gate)
 
