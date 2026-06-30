@@ -115,7 +115,7 @@ Agent tool (general-purpose, model: balanced):
 ```
 </host>
 
-<host: codex, opencode, cursor>
+<host: codex, opencode, cursor, zed-agent>
 Run the alignment check inline: read both documents, perform the forward and reverse traces using the Comparison Procedure above, and produce the Alignment Report.
 </host>
 

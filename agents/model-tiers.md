@@ -4,12 +4,12 @@ Skills refer to model tiers by **role** rather than by brand name so they read
 correctly on every supported host. This file resolves each role to the
 host-specific model identifier.
 
-| Role | Claude Code | Codex | OpenCode | Cursor |
-|---|---|---|---|---|
-| `fast` | `haiku` | `gpt-5.4-mini` | host-pass-through | host-pass-through |
-| `balanced` | `sonnet` | `gpt-5.4` | host-pass-through | host-pass-through |
-| `frontier` | `opus` | `gpt-5.5` | host-pass-through | host-pass-through |
-| `coding-specialist` | `sonnet` | `gpt-5.3-codex` | host-pass-through | host-pass-through |
+| Role | Claude Code | Codex | OpenCode | Cursor | Hermes Agent | Zed Agent |
+|---|---|---|---|---|---|---|
+| `fast` | `haiku` | `gpt-5.4-mini` | host-pass-through | host-pass-through | host-pass-through | host-pass-through |
+| `balanced` | `sonnet` | `gpt-5.4` | host-pass-through | host-pass-through | host-pass-through | host-pass-through |
+| `frontier` | `opus` | `gpt-5.5` | host-pass-through | host-pass-through | host-pass-through | host-pass-through |
+| `coding-specialist` | `sonnet` | `gpt-5.3-codex` | host-pass-through | host-pass-through | host-pass-through | host-pass-through |
 
 `host-pass-through` means the host uses whatever model the user has selected in
 its own configuration. Skill prose must not name a specific model on those hosts.

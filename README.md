@@ -19,7 +19,56 @@ Autonomous Dev Kit originated as a fork of Jesse Vincent's [Superpowers](https:/
 
 ## Installation
 
-**Note:** Installation differs by platform. Claude Code or Cursor have built-in plugin marketplaces. Codex can use the open `skills` CLI (`npx skills add`) or manual setup. OpenCode and Hermes Agent currently use manual setup.
+**Note:** Installation differs by platform. Claude Code or Cursor have built-in plugin marketplaces. Codex can use the open `skills` CLI (`npx skills add`) or manual setup. OpenCode, Hermes Agent, and Zed currently use manual setup.
+
+### Zed Agent
+
+Zed's June 2026 Skills docs require each skill to be a direct child of `~/.agents/skills/` (global) or `<worktree>/.agents/skills/` (project-local). Use ADK's Zed installer rather than the namespace symlink used by some other hosts.
+
+**macOS/Linux:**
+
+```bash
+# Clone the autodev repository
+git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git ~/.agents/autodev
+
+# Link each ADK skill into Zed's flat skills root
+~/.agents/autodev/scripts/install-zed.sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git "$env:USERPROFILE\.agents\autodev"
+& "$env:USERPROFILE\.agents\autodev\scripts\install-zed.ps1"
+```
+
+Add this once to Zed personal instructions (`~/.config/zed/AGENTS.md`, or `%APPDATA%\Zed\AGENTS.md` on Windows):
+
+```markdown
+# Autonomous Dev Kit host declaration
+Host: zed-agent
+When reading ADK skills, follow host-neutral instructions and `<host: zed-agent>` blocks. Ignore host blocks for claude-code, codex, opencode, cursor, and hermes-agent unless explicitly running that External Agent instead of Zed Agent.
+```
+
+For project-local install instead of global install, run from a trusted project worktree:
+
+```bash
+git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git .autodev-kit
+.autodev-kit/scripts/install-zed.sh --scope project --project-root .
+```
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git .autodev-kit
+& ".\.autodev-kit\scripts\install-zed.ps1" -Scope Project -ProjectRoot .
+```
+
+Project-local Zed skills are written under `<worktree>/.agents/skills/` and load only after Zed trusts the worktree.
+
+Then open Zed's **AI > Skills** page or start a new Zed Agent thread and ask `help me plan this feature`. Skills live-reload; start a fresh thread if the catalog was already cached.
+
+**Detailed docs:** [`.zed/INSTALL.md`](.zed/INSTALL.md), [`docs/README.zed.md`](docs/README.zed.md), and [`docs/zed-hook-equivalents.md`](docs/zed-hook-equivalents.md)
 
 ### Hermes Agent
 
@@ -162,6 +211,7 @@ Autonomous Dev Kit skills run on any host that supports the SKILL.md format. Hos
 | OpenCode | `~/.config/opencode/skills/autodev/` | yes | Tool mapping documented in `.opencode/INSTALL.md` |
 | Cursor | `/plugin-add autodev` | yes (via plugin) | Plugin manifest defines skills/agents/commands/hooks |
 | Hermes Agent | `~/.hermes/skills/autodev/` | yes | `delegate_task` for subagents; `todo` for task tracking; `clarify` for user questions |
+| Zed Agent | `~/.agents/skills/<skill-name>/` (flat direct children) | yes | Native Zed Skills; Agent Profiles/Tool Permissions; Threads Sidebar + worktree isolation; no ADK lifecycle hooks |
 
 Full capability matrix: [docs/cross-llm-coverage.md](docs/cross-llm-coverage.md)  
 Per-skill host-conditional audit: [tests/cross-llm-coverage.md](tests/cross-llm-coverage.md)

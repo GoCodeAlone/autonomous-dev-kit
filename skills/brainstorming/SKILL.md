@@ -83,7 +83,7 @@ digraph brainstorming {
   - AskUserQuestion supports up to 4 questions per form — use this to reduce round-trips
   </host>
 
-  <host: codex, opencode, cursor>
+  <host: codex, opencode, cursor, zed-agent>
   - Present options as a numbered list and ask the user to reply with the chosen number
   - Group no more than 3 questions per turn to avoid overloading the chat
   </host>

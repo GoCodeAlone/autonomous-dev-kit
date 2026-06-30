@@ -54,7 +54,7 @@ not a blocking sleep) — observed early-exiting ~6× in one run. The bash sleep
 genuinely blocks to completion.
 </host>
 
-<host: codex, cursor, opencode>
+<host: codex, cursor, opencode, zed-agent>
 Use your host's equivalent poll mechanism. Where no blocking-background-bash exists, the
 sanctioned fallback is **self-poll on each lead wakeup**: run `gh pr checks <pr>` once
 per turn and re-check on the next turn. This loses fire-on-event but is reliable; do not
@@ -271,7 +271,7 @@ Agent tool (general-purpose, model: balanced, run_in_background: true):
 ````
 </host>
 
-<host: codex, opencode, cursor>
+<host: codex, opencode, cursor, zed-agent>
 
 Use your host's equivalent mechanism to periodically poll the following in a loop,
 with a **10-minute** wait between full cycles and a **60-minute** total session cap:
@@ -289,6 +289,11 @@ with a **10-minute** wait between full cycles and a **60-minute** total session 
 When the 60-minute limit is reached before all PRs are clean, write a timeout
 status report listing which PRs still need attention, then exit. The orchestrator
 should start a new monitor for the remaining PRs.
+
+On Zed Agent, track this loop in the orchestrator checklist or a dedicated Zed
+Agent thread. Zed Agent does not install ADK lifecycle hooks, so do not wait for
+hook reinvocation; explicitly self-poll or switch back to the monitor thread on
+cadence. Use Zed worktree isolation for each PR branch before editing fixes.
 
 When a PR has merged with green base-branch CI and a design + plan exist in
 `docs/plans/` for its branch, invoke `autodev:post-merge-retrospective` to

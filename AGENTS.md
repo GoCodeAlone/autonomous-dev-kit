@@ -41,7 +41,7 @@ bash tests/version-check.sh
 Follow `skills/writing-skills/SKILL.md` for the complete guide. Key rules:
 - Skills use `<host: ...>` blocks to gate host-specific content
 - Forbidden tokens (TodoWrite, TeamCreate, Sonnet, etc.) must only appear inside `<host: claude-code>` blocks
-- Recognized hosts: `claude-code`, `codex`, `opencode`, `cursor`, `hermes-agent`
+- Recognized hosts: `claude-code`, `codex`, `opencode`, `cursor`, `hermes-agent`, `zed-agent`
 
 ## Versioning
 

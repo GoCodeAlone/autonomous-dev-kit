@@ -1,41 +1,51 @@
 name: Skill Content Check
 
 on:
-  push:
-    paths:
-      - 'skills/**'
-      - 'agents/**'
-      - 'hooks/**'
-      - 'tests/skill-content-grep.sh'
-      - 'tests/pipeline-evidence-doc-sync.sh'
-      - 'tests/skill-cross-refs.sh'
-      - 'tests/adk-path-canonicalization.sh'
-      - '.github/workflows/skill-content-check.yml'
-  pull_request:
-    paths:
-      - 'skills/**'
-      - 'agents/**'
-      - 'hooks/**'
-      - 'tests/skill-content-grep.sh'
-      - 'tests/pipeline-evidence-doc-sync.sh'
-      - 'tests/skill-cross-refs.sh'
-      - 'tests/adk-path-canonicalization.sh'
-      - '.github/workflows/skill-content-check.yml'
-  workflow_dispatch:
+    push:
+        paths:
+            - "skills/**"
+            - "agents/**"
+            - "hooks/**"
+            - "scripts/install-zed.sh"
+            - "scripts/install-zed.ps1"
+            - "tests/skill-content-grep.sh"
+            - "tests/pipeline-evidence-doc-sync.sh"
+            - "tests/skill-cross-refs.sh"
+            - "tests/adk-path-canonicalization.sh"
+            - "tests/zed-install-contracts.sh"
+            - ".zed/**"
+            - ".github/workflows/skill-content-check.yml"
+    pull_request:
+        paths:
+            - "skills/**"
+            - "agents/**"
+            - "hooks/**"
+            - "scripts/install-zed.sh"
+            - "scripts/install-zed.ps1"
+            - "tests/skill-content-grep.sh"
+            - "tests/pipeline-evidence-doc-sync.sh"
+            - "tests/skill-cross-refs.sh"
+            - "tests/adk-path-canonicalization.sh"
+            - "tests/zed-install-contracts.sh"
+            - ".zed/**"
+            - ".github/workflows/skill-content-check.yml"
+    workflow_dispatch:
 
 permissions:
-  contents: read
+    contents: read
 
 jobs:
-  skill-content-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check skill content for host-specific tokens
-        run: bash tests/skill-content-grep.sh
-      - name: ADK path canonicalization resolver and hook wiring
-        run: bash tests/adk-path-canonicalization.sh
-      - name: Pipeline evidence + doc-sync contracts
-        run: bash tests/pipeline-evidence-doc-sync.sh
-      - name: Skill cross-references resolve
-        run: bash tests/skill-cross-refs.sh
+    skill-content-check:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Check skill content for host-specific tokens
+              run: bash tests/skill-content-grep.sh
+            - name: ADK path canonicalization resolver and hook wiring
+              run: bash tests/adk-path-canonicalization.sh
+            - name: Pipeline evidence + doc-sync contracts
+              run: bash tests/pipeline-evidence-doc-sync.sh
+            - name: Skill cross-references resolve
+              run: bash tests/skill-cross-refs.sh
+            - name: Zed installer contract
+              run: bash tests/zed-install-contracts.sh

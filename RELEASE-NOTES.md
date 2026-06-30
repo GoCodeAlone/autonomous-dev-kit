@@ -1,5 +1,16 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.6.0 — 2026-06-30
+
+Zed Agent support release.
+
+- Added native Zed Agent install docs and scripts. Because Zed discovers skills only as flat direct children of `~/.agents/skills/` or `<worktree>/.agents/skills/`, the Zed installer links/copies each ADK skill directly into the selected skills root instead of using an `autodev/` namespace folder.
+- Added project-local Zed install support via `<worktree>/.agents/skills/`, with docs noting Zed's trusted-worktree requirement for project skills.
+- Added Zed host declaration guidance (`Host: zed-agent`) and Zed-specific skill fallbacks for flat skill names, subagent/thread coordination, task tracking, compaction recovery, and PR monitoring.
+- Added a Zed installer contract test and CI coverage so the flat layout and project-local install path do not regress.
+- Documented Zed capability boundaries: Zed Skills apply to Zed Agent, while ACP External Agents and Terminal Threads use their own native instruction/skill systems; ADK lifecycle hooks are not installed into Zed Agent.
+- Added `docs/zed-hook-equivalents.md`, mapping each ADK lifecycle hook to an explicit Zed Agent checkpoint (run scope-lock verification before task transitions, invoke review before PR creation, invoke demonstration fidelity before demo edits, etc.) plus the narrow `create_worktree` Zed task-hook approximation.
+
 ## v6.5.6 — 2026-06-22
 
 Fix for issue #86: `subagent-scope-guard` false-positived on committed `.scope-lock` files and its block message instructed subagents to auto-revert them — producing spurious `git revert`/`reapply` commits from read-only subagents.

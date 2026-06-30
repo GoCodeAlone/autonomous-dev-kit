@@ -11,7 +11,7 @@ description: Use when creating new skills, editing existing skills, or verifying
 
 **Writing skills IS Test-Driven Development applied to process documentation.**
 
-**Personal skills live in agent-specific directories (`~/.claude/skills` for Claude Code, `~/.agents/skills/` for Codex)** 
+**Personal skills live in agent-specific directories (`~/.claude/skills` for Claude Code, `~/.agents/skills/` for Codex and Zed Agent)**
 
 You write test cases (pressure scenarios with subagents), watch them fail (baseline behavior), write the skill (documentation), watch tests pass (agents comply), and refactor (close loopholes).
 
@@ -95,7 +95,7 @@ skills/
 ## Host-Conditional Sections
 
 Skills may need different content per host (Claude Code, Codex, OpenCode,
-Cursor, Hermes Agent). Use `<host: …>` markers to gate host-specific prose. Markers must
+Cursor, Hermes Agent, Zed Agent). Use `<host: …>` markers to gate host-specific prose. Markers must
 appear on their own lines (the guard only recognises them at line start, after
 optional whitespace). Sections without a marker apply to every host.
 
@@ -106,8 +106,8 @@ optional whitespace). Sections without a marker apply to every host.
 …content for Claude Code only…
 </host>
 
-<host: codex, opencode, cursor, hermes-agent>
-…content shared between Codex, OpenCode, Cursor and Hermes Agent…
+<host: codex, opencode, cursor, hermes-agent, zed-agent>
+…content shared between Codex, OpenCode, Cursor, Hermes Agent and Zed Agent…
 </host>
 ```
 
@@ -135,9 +135,10 @@ misspelled or unclosed. Visibility is the safer trade-off.
 - `opencode` — OpenCode.ai
 - `cursor` — Cursor
 - `hermes-agent` — Hermes Agent (Nous Research)
+- `zed-agent` — Zed's native Agent Panel agent
 
 Use exactly these strings. Adding a new host means updating this list, the
-grep guard's skip logic, and `agents/model-tiers.md`.
+grep guard's skip logic, install docs, cross-LLM coverage, and `agents/model-tiers.md`.
 
 ### When to use a marker vs host-neutral phrasing
 
@@ -155,6 +156,10 @@ Use the `Agent` tool with `team_name` and `name` parameters.
 <host: codex>
 Spawn a sub-agent by asking Codex in natural language. Codex's `/agent`
 slash command switches between active threads.
+</host>
+<host: zed-agent>
+Use Zed Agent's `spawn_agent` capability when available; otherwise create a
+separate Zed Agent thread from the Threads Sidebar and pass the full task brief.
 </host>
 ```
 

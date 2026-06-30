@@ -137,7 +137,7 @@ If no plugin-level changes are warranted, say so.
 This is short, structured analysis work — one pass over the artifacts. Run inline, not as a subagent. The lead agent has the context already. If the artifact set is large (10+ code-review threads, dozens of CI runs), dispatch a `balanced`-tier general-purpose subagent with the artifact paths inline.
 </host>
 
-<host: codex, opencode, cursor>
+<host: codex, opencode, cursor, zed-agent>
 Run inline. The lead agent has the context already. The retro is a structured artifact, not a long-running task — produce the markdown directly.
 </host>
 

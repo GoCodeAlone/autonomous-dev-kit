@@ -14,6 +14,7 @@
 #   .claude-plugin/plugin.json
 #   .claude-plugin/marketplace.json
 #   .cursor-plugin/plugin.json
+#   .hermes/plugin.json
 
 set -euo pipefail
 

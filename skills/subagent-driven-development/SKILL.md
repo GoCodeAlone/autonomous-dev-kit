@@ -39,6 +39,16 @@ instead of a task queue. See [Sequential Mode](#sequential-mode).
 
 </host>
 
+<host: zed-agent>
+
+**Sequential Subagents / Parallel Threads** — Zed Agent supports multiple agent threads
+and may expose a subagent tool depending on the active profile/model. Prefer the native
+subagent tool when available; otherwise create separate Zed Agent threads in the Threads
+Sidebar, ideally isolated in Git worktrees, and pass the full task text in the prompt. Use
+branch names, commits, and diffs as the coordination surface. See [Sequential Mode](#sequential-mode).
+
+</host>
+
 ---
 
 <host: claude-code>
@@ -238,7 +248,7 @@ Invoke `autodev:finishing-a-development-branch`.
 
 </host>
 
-<host: codex, opencode, cursor>
+<host: codex, opencode, cursor, zed-agent>
 
 Use Sequential Mode — see the [Sequential Mode](#sequential-mode) section below.
 
@@ -297,6 +307,20 @@ Codex subagents do not share a task list. Use these conventions instead:
   `.autodev/state/phase-progress.jsonl` when a locked plan remains active.
 - **No DM channel**: pass reviewer output back to the orchestrator as a return value; the
   orchestrator decides whether to re-dispatch the implementer.
+
+</host>
+
+<host: zed-agent>
+
+### Zed Agent Coordination Notes
+
+Zed Agent threads do not share an ADK task queue. Use these conventions instead:
+
+- **Task identity**: pass `task_id: N`, the full task text, design path, plan path, branch/worktree path, and expected `Writes:` ledger in every spawned subagent or parallel-thread prompt.
+- **Isolation**: when two tasks might touch overlapping files, use Zed's worktree isolation before starting the second thread. If a native subagent tool is available in the current profile, still require the final `Writes:` ledger.
+- **Handoff surface**: use commits and diffs as the review surface. Reviewers read the implementer's commit or branch diff, not a shared task record.
+- **Progress tracking**: after each task completes, record completion in the orchestrating agent's own checklist and append a compact JSONL row (`{"ev":"phase","pl":"...","ph":"...","st":"done","e":"...","nx":"..."}`) to `.autodev/state/phase-progress.jsonl` when a locked plan remains active.
+- **No guaranteed DM channel**: if the work runs in separate Zed threads, reviewer output returns through the thread transcript; the orchestrator reconciles it before re-dispatching or marking the task complete.
 
 </host>
 
@@ -400,7 +424,7 @@ You don't opt in. When you see the resumption block, treat it as authoritative a
 
 </host>
 
-<host: codex, opencode>
+<host: codex, opencode, zed-agent>
 
 Hooks are not documented on this host. Apply the pattern manually: at the start of every reply that follows a context compaction, scroll back to the first user message in your visible transcript, re-state the task to yourself, then proceed. If you keep a running activity log in your scratch context, re-read it before issuing new subagent instructions.
 
@@ -441,6 +465,12 @@ Codex doesn't expose a structured task list. Track dispatched subagents in your 
 <host: opencode>
 
 Use `@mention` to peer sessions to ping each background subagent for a status report on cadence. If a peer has gone silent past the check window, treat it as suspect.
+
+</host>
+
+<host: zed-agent>
+
+Track Zed subagents or parallel threads in the orchestrator checklist (thread title, worktree/branch, task id, started-at, last-checked-at, current stage). On each watchdog interval, switch to each thread or inspect the subagent result and request a one-paragraph status: current step, latest verification, next concrete action. If a thread has gone silent past the check window, treat it as suspect and re-dispatch with the same task brief plus the observed failure.
 
 </host>
 

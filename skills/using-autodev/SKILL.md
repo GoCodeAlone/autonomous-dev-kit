@@ -17,6 +17,14 @@ This is not negotiable. This is not optional. You cannot rationalize your way ou
 
 Use the current host's skill-loading mechanism. When a skill is invoked or loaded, follow its instructions directly. Do not bypass the skill body by relying on memory of similarly named workflows.
 
+Host-specific blocks use `<host: name>` markers. Follow host-neutral instructions and the block matching the current host declaration; ignore blocks for other hosts unless the user explicitly says they are running that host.
+
+<host: zed-agent>
+Zed skills are installed as flat names, not an `autodev/` namespace. When this skill says `autodev:<skill-name>`, load the Zed skill named `<skill-name>` using the `skill` tool, slash command, or @-mention.
+
+Zed Agent does not run ADK lifecycle hooks automatically. Use the explicit checkpoint mapping in `docs/zed-hook-equivalents.md`: before PR creation invoke review + verification, before demo/example edits invoke `demonstration-fidelity`, before locked-plan task transitions run the scope-lock verification command, after subagent/thread completion inspect the `Writes:` ledger and verify the lock, and before completion claims run fresh verification.
+</host>
+
 # Using Skills
 
 ## The Rule
