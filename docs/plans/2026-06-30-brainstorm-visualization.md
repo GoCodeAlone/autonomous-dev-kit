@@ -4,9 +4,9 @@
 
 **Goal:** Add host-neutral brainstorm/design visualization companion guidance for issue #78.
 
-**Architecture:** Extend `skills/brainstorming/SKILL.md` with just-in-time visual companion rules while keeping existing gates intact. Add a lazy-loaded guide, behavior fixture, focused regression guard, coverage/doc updates, and a follow-up for deferred browser parity.
+**Architecture:** Extend `skills/brainstorming/SKILL.md` with just-in-time visual companion rules while keeping existing gates intact. Add a lazy-loaded guide, behavior fixture, focused regression guard, coverage/doc updates, follow-up tracking, and transcript-backed pressure proof.
 
-**Tech Stack:** Markdown skills/docs; Bash regression tests; GitHub issue/PR workflow.
+**Tech Stack:** Markdown skills/docs; Bash regression tests; subagent pressure testing; GitHub issue/PR workflow.
 
 **Base branch:** main
 
@@ -15,8 +15,8 @@
 ## Scope Manifest
 
 **PR Count:** 1
-**Tasks:** 4
-**Estimated Lines of Change:** ~260
+**Tasks:** 3
+**Estimated Lines of Change:** ~300
 
 **Out of scope:**
 - Browser server/runtime companion.
@@ -27,26 +27,56 @@
 
 | PR # | Title | Tasks | Branch |
 |------|-------|-------|--------|
-| 1 | Add brainstorm visual companion guidance | Task 1, Task 2, Task 3, Task 4 | issue-78-brainstorm-visualization |
+| 1 | Add brainstorm visual companion guidance | Task 1, Task 2, Task 3 | issue-78-brainstorm-visualization |
 
 **Status:** Draft
 
 ---
 
-## Task 1: Skill Regression Guard and Behavior Fixture
+## Declared Integration Matrix
+
+| declared visual capability | host(s) | state | plan proof / rationale |
+|---|---|---|---|
+| Markdown text visual explanations | all supported hosts | config-only | Skill emits normal markdown/chat text; no host-specific runtime API changes. `tests/brainstorm-visual-companion.sh` asserts text fallback/source-of-truth contract. |
+| Mermaid/rendered diagrams | all supported hosts | config-only / best-effort | Skill may emit Mermaid, but rendering is not claimed unless observed in a specific host. Every Mermaid visual requires text fallback. |
+| Browser companion tab | all supported hosts | deferred | Tracked in `docs/FOLLOWUPS.md`; needs separate runtime/process/security design. |
+| Click/event capture | all supported hosts | deferred | Tracked in `docs/FOLLOWUPS.md`; no browser session state in this PR. |
+
+---
+
+## Task 1: Integrated TDD Implementation
 
 **Files:**
 - Create: `tests/brainstorm-visual-companion.sh`
 - Create: `skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md`
+- Modify: `skills/brainstorming/SKILL.md`
+- Create: `skills/brainstorming/visual-companion.md`
+- Modify: `AGENTS.md`
+- Modify: `docs/cross-llm-coverage.md`
+- Modify: `tests/cross-llm-coverage.md`
+- Create: `docs/FOLLOWUPS.md`
 
-**Step 1: Write the failing regression guard**
+**Step 1: RED behavior baseline**
+
+Dispatch a baseline subject agent against the current pre-change `skills/brainstorming/SKILL.md` with this prompt:
+
+```text
+You are testing current brainstorming behavior before issue #78 is implemented.
+Read `skills/brainstorming/SKILL.md` only.
+Scenario: A user is brainstorming a dashboard redesign quickly. First they ask a conceptual question: "what does trust mean for this dashboard?" Later they ask a visual layout choice that would be clearer shown than described. Then they decline visuals to save time. Finally they change a decision after a diagram would have existed.
+Return what the current skill explicitly requires for: conceptual text-only, visual offer, declined offer/no re-offer, accepted visual with text fallback, stale visual. Cite skill lines/sections. If the skill lacks a rule, say MISSING.
+```
+
+Expected RED: baseline output reports MISSING for visual offer, declined/no re-offer, accepted visual/text fallback, and stale visual. Save the summarized baseline in `docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md` after Task 2 GREEN proof.
+
+**Step 2: Write failing shell regression guard**
 
 Create `tests/brainstorm-visual-companion.sh`:
 
 ```bash
 #!/usr/bin/env bash
 # Regression guard for issue #78 brainstorm visualization companion.
-set -uo pipefail
+set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BRAIN="$ROOT/skills/brainstorming/SKILL.md"
 GUIDE="$ROOT/skills/brainstorming/visual-companion.md"
@@ -75,6 +105,7 @@ if [ -f "$GUIDE" ]; then
   has "$GUIDE" "accessibility" && pass "guide mentions accessibility" || bad "guide missing accessibility guidance"
   has "$GUIDE" "fallback" && pass "guide mentions fallback" || bad "guide missing fallback guidance"
   has "$GUIDE" "secrets" && pass "guide forbids secrets" || bad "guide missing secrets guidance"
+  has "$GUIDE" "SKILL.md remains authoritative" && pass "guide is bounded by SKILL.md authority" || bad "guide authority boundary missing"
 fi
 
 [ -f "$FIXTURE" ] && pass "behavior fixture exists" || bad "behavior fixture missing"
@@ -86,27 +117,27 @@ fi
 
 has "$AGENTS" "tests/brainstorm-visual-companion.sh" && pass "AGENTS documents visual companion test" || bad "AGENTS missing visual companion test"
 has "$CAPS" "Visual companion" && pass "capability matrix includes visual companion" || bad "capability matrix missing visual companion"
+has "$CAPS" "browser deferred" && pass "capability matrix tracks browser deferral" || bad "capability matrix missing browser deferral"
 has "$SKILL_COVERAGE" "visual companion" && pass "skill coverage notes visual companion" || bad "skill coverage missing visual companion note"
 
 echo ""; echo "Results: $fail failure(s)"; [ "$fail" -eq 0 ]
 ```
 
-**Step 2: Verify RED**
-
 Run: `bash tests/brainstorm-visual-companion.sh`
 
-Expected: FAIL with at least these missing-contract messages:
+Expected RED:
 
 ```text
 FAIL: brainstorming missing Visual Companion section
 FAIL: visual companion guide missing
 FAIL: behavior fixture missing
 FAIL: AGENTS missing visual companion test
+Results: <nonzero> failure(s)
 ```
 
 **Step 3: Add behavior fixture**
 
-Create `skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md` with:
+Create `skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md`:
 
 ```markdown
 # Brainstorm Visual Companion Expected Behavior
@@ -130,20 +161,7 @@ A user asks an agent to brainstorm a dashboard redesign quickly. The session has
 | stale visual | If a visual becomes stale or contradicts a later text decision, the agent retires or updates it and treats text as the source of truth. |
 ```
 
-**Step 4: Commit policy**
-
-Do not commit yet if the test is still red. Continue Task 2 to make this guard pass.
-
----
-
-## Task 2: Brainstorming Skill and Visual Companion Guide
-
-**Files:**
-- Modify: `skills/brainstorming/SKILL.md`
-- Create: `skills/brainstorming/visual-companion.md`
-- Uses tests from Task 1.
-
-**Step 1: Update `SKILL.md`**
+**Step 4: Update brainstorming skill**
 
 Modify `skills/brainstorming/SKILL.md`:
 
@@ -166,73 +184,16 @@ Modify `skills/brainstorming/SKILL.md`:
   - Stale/contradictory visual → retire/update it.
   - No secrets/PII in visuals.
 
-**Step 2: Add guide**
+**Step 5: Add bounded guide**
 
-Create `skills/brainstorming/visual-companion.md` with bounded reference content:
+Create `skills/brainstorming/visual-companion.md` with these sections only: `Lazy-load rule`, `When to use visuals`, `When to stay text-only`, `Mermaid and diagram examples`, `Mockups and comparisons`, `Accessibility and fallback`, `Privacy and safety`, `Stale visuals`. Include one Mermaid example and one mockup guidance list. State: `SKILL.md remains authoritative`; do not duplicate full brainstorming workflow.
 
-- `# Visual Companion Guide`
-- `## Lazy-load rule`
-- `## When to use visuals`
-- `## When to stay text-only`
-- `## Mermaid and diagram examples`
-- `## Mockups and comparisons`
-- `## Accessibility and fallback`
-- `## Privacy and safety`
-- `## Stale visuals`
+**Step 6: Update durable docs**
 
-**Step 3: Verify GREEN for skill/guide markers**
-
-Run: `bash tests/brainstorm-visual-companion.sh`
-
-Expected: still FAIL only for durable docs not yet updated:
-
-```text
-FAIL: AGENTS missing visual companion test
-FAIL: capability matrix missing visual companion
-FAIL: skill coverage missing visual companion note
-```
-
-If any skill/guide/fixture assertion fails, fix before continuing.
-
----
-
-## Task 3: Durable Docs and Follow-Up
-
-**Files:**
-- Modify: `AGENTS.md`
-- Modify: `docs/cross-llm-coverage.md`
-- Modify: `tests/cross-llm-coverage.md`
-- Create: `docs/FOLLOWUPS.md`
-
-**Step 1: Update documented checks**
-
-In `AGENTS.md`, under skill content checks, add:
-
-```bash
-bash tests/brainstorm-visual-companion.sh
-```
-
-**Step 2: Update capability matrix**
-
-In `docs/cross-llm-coverage.md`, add a capability row:
-
-```markdown
-| Visual companion output | ⚠️ markdown/Mermaid best-effort; browser deferred | ⚠️ markdown/Mermaid best-effort; browser deferred | ⚠️ markdown/Mermaid best-effort; browser deferred | ⚠️ markdown/Mermaid best-effort; browser deferred | ⚠️ markdown/Mermaid best-effort; browser deferred | ⚠️ markdown plus best-effort Mermaid rendering; browser deferred |
-```
-
-Add a note: rendered diagrams require text fallback; browser/event capture is deferred.
-
-**Step 3: Update skill coverage**
-
-In `tests/cross-llm-coverage.md`, update brainstorming note to mention:
-
-```text
-Visual companion guidance is host-neutral and best-effort; browser/event capture is deferred.
-```
-
-**Step 4: Add deferred follow-up**
-
-Create `docs/FOLLOWUPS.md` if absent:
+- `AGENTS.md`: add `bash tests/brainstorm-visual-companion.sh` under skill content checks.
+- `docs/cross-llm-coverage.md`: add `Visual companion output` row with markdown/Mermaid best-effort and browser deferred for every host. Add a note that rendered diagrams require text fallback and browser/event capture is deferred.
+- `tests/cross-llm-coverage.md`: update brainstorming note: `Visual companion guidance is host-neutral and best-effort; browser/event capture is deferred.`
+- Create `docs/FOLLOWUPS.md`:
 
 ```markdown
 # Follow-ups
@@ -244,7 +205,7 @@ Create `docs/FOLLOWUPS.md` if absent:
 - **Follow-up:** Evaluate whether ADK should ship an upstream-like browser companion with tab launch, click/event capture, session security, cleanup, and host process validation.
 ```
 
-**Step 5: Verify GREEN**
+**Step 7: Verify GREEN**
 
 Run: `bash tests/brainstorm-visual-companion.sh`
 
@@ -256,7 +217,7 @@ PASS: brainstorming has Visual Companion section
 Results: 0 failure(s)
 ```
 
-**Step 6: Commit Tasks 1-3**
+**Step 8: Commit**
 
 Run:
 
@@ -265,29 +226,87 @@ git add AGENTS.md docs/cross-llm-coverage.md tests/cross-llm-coverage.md docs/FO
 git commit -m "Add brainstorm visual companion guidance"
 ```
 
+**Rollback:** revert this commit; rerun `bash tests/brainstorm-visual-companion.sh` only if keeping the test, otherwise rerun full suite after revert.
+
 ---
 
-## Task 4: Behavior Proof and Full Validation
+## Task 2: Transcript-Backed Behavior Proof
 
 **Files:**
-- No production file changes expected unless behavior proof finds a gap.
-- PR body must include behavior proof summary and test output.
+- Create: `docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md`
+- Modify implementation files only if proof finds gaps.
 
-**Step 1: Run subagent behavior proof**
+**Step 1: GREEN subject-agent pressure run**
 
-Dispatch a reviewer with this prompt:
+Dispatch a subject agent with:
 
 ```text
-Read `skills/brainstorming/SKILL.md`, `skills/brainstorming/visual-companion.md`, and `skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md`.
-
-Assess whether the current skill instructions force all expected behavior paths: conceptual text-only, visual offer, declines, accepts, stale visual. Bias toward finding gaps. Return PASS only if each path is explicitly supported by skill/guide text, citing the lines/sections.
+Use `skills/brainstorming/SKILL.md` and, only if the skill instructs you to, `skills/brainstorming/visual-companion.md`.
+Scenario: A user is brainstorming a dashboard redesign quickly. First they ask the conceptual question "what does trust mean for this dashboard?" Later they ask a visual layout choice that would be clearer shown than described. Then they decline visuals to save time. Finally imagine they had accepted a visual and then changed a decision so the visual is stale.
+Return the exact messages/actions you would take for: conceptual text-only, visual offer, declines, accepts, stale visual. Cite the skill/guide rule that governs each path.
 ```
 
-Expected: PASS for all five paths.
+Expected: subject demonstrates all five fixture paths and cites current skill/guide rules.
 
-If FAIL: update `SKILL.md` or guide minimally, rerun `bash tests/brainstorm-visual-companion.sh`, rerun behavior proof, and commit fixes.
+**Step 2: Reviewer scores the transcript**
 
-**Step 2: Run targeted checks**
+Dispatch a reviewer with the subject output plus `skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md`:
+
+```text
+Score the subject transcript against all expected paths. Bias toward finding failures. PASS only if conceptual text-only, visual offer, declines, accepts, and stale visual paths match the fixture and cite rules.
+```
+
+Expected: PASS.
+
+**Step 3: Write proof artifact**
+
+Create `docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md`:
+
+```markdown
+# Brainstorm Visualization Behavior Proof
+
+## RED baseline
+
+<summary of baseline subject output from Task 1 Step 1; include MISSING rows>
+
+## GREEN subject run
+
+<subject output summary; include citations>
+
+## Reviewer score
+
+PASS for: conceptual text-only, visual offer, declines, accepts, stale visual.
+
+## Evidence
+
+- `bash tests/brainstorm-visual-companion.sh` → `Results: 0 failure(s)`
+```
+
+**Step 4: Fix and re-run if needed**
+
+If reviewer FAILs: update `skills/brainstorming/SKILL.md` or guide minimally, rerun `bash tests/brainstorm-visual-companion.sh`, rerun subject + reviewer proof, then continue.
+
+**Step 5: Commit proof/fixes**
+
+Run:
+
+```bash
+git add docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md skills/brainstorming/SKILL.md skills/brainstorming/visual-companion.md
+git commit -m "Prove visual companion behavior"
+```
+
+If no implementation fix was needed, commit only the proof artifact.
+
+**Rollback:** revert proof/fix commit; no runtime state.
+
+---
+
+## Task 3: Full Validation and PR Prep
+
+**Files:**
+- No production file changes expected unless validation finds a gap.
+
+**Step 1: Run targeted checks**
 
 Run:
 
@@ -300,7 +319,7 @@ bash tests/no-machine-paths.sh
 
 Expected: all PASS / `Results: 0 failure(s)`.
 
-**Step 3: Run full documented suite**
+**Step 2: Run full documented suite**
 
 Run AGENTS.md commands:
 
@@ -318,9 +337,9 @@ bash tests/version-check.sh
 
 Expected: all PASS, `OK: All version files agree on version 6.6.1`.
 
-**Step 4: Commit validation fixes if needed**
+**Step 3: Commit validation fixes if needed**
 
-If Step 1-3 required edits:
+If Step 1-2 required edits:
 
 ```bash
 git add <changed-files>
@@ -329,4 +348,14 @@ git commit -m "Tighten visual companion validation"
 
 If no edits, no commit.
 
-**Rollback:** revert the implementation commit(s) and rerun the full documented suite. No runtime state or migrations.
+**Step 4: PR body evidence**
+
+PR body must include:
+
+- Issue: closes #78.
+- RED baseline summary from behavior proof.
+- GREEN subject/reviewer behavior proof summary.
+- Targeted and full-suite command outputs.
+- Deferred browser/event-capture parity follow-up path: `docs/FOLLOWUPS.md`.
+
+**Rollback:** revert implementation/proof commits and rerun the full documented suite. No runtime state or migrations.
