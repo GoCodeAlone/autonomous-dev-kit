@@ -55,7 +55,7 @@ Behavior proof means an isolated subject applies the skill under pressure; it is
 
 ---
 
-## Task 1: Integrated TDD Implementation
+### Task 1: Integrated TDD Implementation
 
 **Files:**
 - Create: `tests/brainstorm-visual-companion.sh`
@@ -254,7 +254,7 @@ git commit -m "Add brainstorm visual companion guidance"
 
 ---
 
-## Task 2: Transcript-Backed Behavior Proof
+### Task 2: Transcript-Backed Behavior Proof
 
 **Files:**
 - Create: `docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md`
@@ -325,7 +325,7 @@ If no implementation fix was needed, commit only the proof artifact.
 
 ---
 
-## Task 3: Full Validation and PR Prep
+### Task 3: Full Validation and PR Prep
 
 **Files:**
 - No production file changes expected unless validation finds a gap.
