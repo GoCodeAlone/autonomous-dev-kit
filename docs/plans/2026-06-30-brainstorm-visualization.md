@@ -29,7 +29,7 @@
 |------|-------|-------|--------|
 | 1 | Add brainstorm visual companion guidance | Task 1, Task 2, Task 3 | issue-78-brainstorm-visualization |
 
-**Status:** Draft
+**Status:** Locked 2026-06-30T10:37:25Z
 
 ---
 
