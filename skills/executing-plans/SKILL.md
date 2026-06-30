@@ -31,6 +31,10 @@ Use TodoWrite — one entry per plan task.
 If your environment has no built-in task system, maintain a numbered checklist tracking each task as pending, in-progress, or completed.
 </host>
 
+<host: hermes-agent>
+Use the `todo` tool — one entry per plan task.
+</host>
+
 ### Step 2: Execute Batch
 **Default: First 3 tasks**
 

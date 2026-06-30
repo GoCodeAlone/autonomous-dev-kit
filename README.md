@@ -19,7 +19,38 @@ Autonomous Dev Kit originated as a fork of Jesse Vincent's [Superpowers](https:/
 
 ## Installation
 
-**Note:** Installation differs by platform. Claude Code or Cursor have built-in plugin marketplaces. Codex can use the open `skills` CLI (`npx skills add`) or manual setup. OpenCode currently uses manual setup.
+**Note:** Installation differs by platform. Claude Code or Cursor have built-in plugin marketplaces. Codex can use the open `skills` CLI (`npx skills add`) or manual setup. OpenCode and Hermes Agent currently use manual setup.
+
+### Hermes Agent
+
+From your project root or home directory:
+
+```bash
+# Clone the autodev repository
+git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git ~/.hermes/autodev
+
+# Create the skills symlink so Hermes discovers autodev skills
+mkdir -p ~/.hermes/skills
+ln -s ~/.hermes/autodev/skills ~/.hermes/skills/autodev
+```
+
+**Windows (PowerShell):**
+```powershell
+git clone https://github.com/GoCodeAlone/autonomous-dev-kit.git "$env:USERPROFILE\.hermes\autodev"
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.hermes\skills"
+cmd /c mklink /J "$env:USERPROFILE\.hermes\skills\autodev" "$env:USERPROFILE\.hermes\autodev\skills"
+```
+
+Then restart Hermes (start a new session) so it discovers the skills.
+
+**Updating:**
+```bash
+cd ~/.hermes/autodev && git pull
+```
+
+Skills update instantly through the symlink.
+
+**Detailed docs:** [`.hermes/INSTALL.md`](.hermes/INSTALL.md)
 
 ### Claude Code (via Plugin Marketplace)
 
@@ -130,6 +161,7 @@ Autonomous Dev Kit skills run on any host that supports the SKILL.md format. Hos
 | Codex | `~/.agents/skills/autodev/` | yes | Sequential sub-agent dispatch; `/plan` slash; `/agent` switching |
 | OpenCode | `~/.config/opencode/skills/autodev/` | yes | Tool mapping documented in `.opencode/INSTALL.md` |
 | Cursor | `/plugin-add autodev` | yes (via plugin) | Plugin manifest defines skills/agents/commands/hooks |
+| Hermes Agent | `~/.hermes/skills/autodev/` | yes | `delegate_task` for subagents; `todo` for task tracking; `clarify` for user questions |
 
 Full capability matrix: [docs/cross-llm-coverage.md](docs/cross-llm-coverage.md)  
 Per-skill host-conditional audit: [tests/cross-llm-coverage.md](tests/cross-llm-coverage.md)

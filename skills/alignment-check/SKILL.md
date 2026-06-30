@@ -119,6 +119,10 @@ Agent tool (general-purpose, model: balanced):
 Run the alignment check inline: read both documents, perform the forward and reverse traces using the Comparison Procedure above, and produce the Alignment Report.
 </host>
 
+<host: hermes-agent>
+Dispatch a subagent using `delegate_task` with a `goal` describing the alignment verification and both document paths in `context`. Use the same report format specified above.
+</host>
+
 ## On FAIL
 
 Feed drift items back to `writing-plans` for revision:

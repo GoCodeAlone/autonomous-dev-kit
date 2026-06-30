@@ -244,6 +244,12 @@ Use Sequential Mode — see the [Sequential Mode](#sequential-mode) section belo
 
 </host>
 
+<host: hermes-agent>
+
+**Sequential Subagents** — Hermes Agent uses `delegate_task` to spawn one subagent per task. Each subagent gets its own conversation, terminal session, and toolset. Pass the full plan task text in the `goal` or `context` parameters. See [Sequential Mode](#sequential-mode).
+
+</host>
+
 ---
 
 ## Sequential Mode
@@ -400,6 +406,12 @@ Hooks are not documented on this host. Apply the pattern manually: at the start 
 
 </host>
 
+<host: hermes-agent>
+
+Hooks are not documented on this host. Apply the pattern manually: at the start of every reply that follows a context compaction, scroll back to the first user message in your visible transcript, re-state the task to yourself, then proceed. Use `session_search` to re-orient on the current session's goal and progress.
+
+</host>
+
 ### 2. Watchdog cadence (every 5–10 minutes)
 
 When you have one or more subagents running in the background, check on them on a 5–10 minute cadence. Don't fire-and-forget.
@@ -429,6 +441,12 @@ Codex doesn't expose a structured task list. Track dispatched subagents in your 
 <host: opencode>
 
 Use `@mention` to peer sessions to ping each background subagent for a status report on cadence. If a peer has gone silent past the check window, treat it as suspect.
+
+</host>
+
+<host: hermes-agent>
+
+Use `process(action='poll')` to check background subagent status, `process(action='log')` to read recent output. To send corrective input, use `process(action='submit')` with the message. To terminate a stuck subagent, use `process(action='kill')`. When using `terminal(background=true)` to pace a self-paced run, factor watchdog checks into the cadence.
 
 </host>
 

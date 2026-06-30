@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.claude-plugin/plugin.json'
+      - '.hermes/plugin.json'
   workflow_dispatch:
 
 concurrency:
