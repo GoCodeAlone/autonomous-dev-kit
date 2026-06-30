@@ -75,10 +75,10 @@ Dispatch a baseline subject agent against the current pre-change `skills/brainst
 You are testing current brainstorming behavior before issue #78 is implemented.
 Read `skills/brainstorming/SKILL.md` only.
 Scenario: A user is brainstorming a dashboard redesign quickly. First they ask a conceptual question: "what does trust mean for this dashboard?" Later they ask a visual layout choice that would be clearer shown than described. Then they decline visuals to save time. Finally they change a decision after a diagram would have existed.
-Return what the current skill explicitly requires for: conceptual text-only, visual offer, declined offer/no re-offer, accepted visual with text fallback, stale visual. Cite skill lines/sections. If the skill lacks a rule, say MISSING.
+First answer what messages/actions you would actually take in the scenario using only the current skill. Then separately mark what the current skill explicitly requires for: conceptual text-only, visual offer, declined offer/no re-offer, accepted visual with text fallback, stale visual. Cite skill lines/sections. If the skill lacks a rule, say MISSING.
 ```
 
-Expected RED: baseline output reports MISSING for visual offer, declined/no re-offer, accepted visual/text fallback, and stale visual. Save the summarized baseline in `docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md` after Task 2 GREEN proof.
+Expected RED: baseline output reports MISSING for visual offer, declined/no re-offer, accepted visual/text fallback, and stale visual. Immediately create `docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md` with the raw or summarized RED baseline output; append GREEN proof in Task 2.
 
 **Step 2: Write failing shell regression guard**
 
@@ -228,12 +228,25 @@ PASS: brainstorming has Visual Companion section
 Results: 0 failure(s)
 ```
 
-**Step 8: Commit**
+**Step 8: Pre-commit quick checks**
 
 Run:
 
 ```bash
-git add AGENTS.md docs/cross-llm-coverage.md tests/cross-llm-coverage.md docs/FOLLOWUPS.md tests/brainstorm-visual-companion.sh skills/brainstorming/SKILL.md skills/brainstorming/visual-companion.md skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md
+bash tests/brainstorm-visual-companion.sh
+bash tests/skill-content-grep.sh
+bash tests/skill-cross-refs.sh
+bash tests/no-machine-paths.sh
+```
+
+Expected: all PASS / `Results: 0 failure(s)`.
+
+**Step 9: Commit**
+
+Run:
+
+```bash
+git add AGENTS.md docs/cross-llm-coverage.md tests/cross-llm-coverage.md docs/FOLLOWUPS.md tests/brainstorm-visual-companion.sh skills/brainstorming/SKILL.md skills/brainstorming/visual-companion.md skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md
 git commit -m "Add brainstorm visual companion guidance"
 ```
 
@@ -261,17 +274,17 @@ Expected: subject demonstrates all five fixture paths and cites current skill/gu
 
 **Step 2: Reviewer scores the transcript**
 
-Dispatch a reviewer with the subject output plus `skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md`:
+Dispatch a reviewer with the subject output plus `skills/brainstorming/SKILL.md`, `skills/brainstorming/visual-companion.md`, and `skills/brainstorming/test-fixtures/visual-companion/expected-behavior.md`:
 
 ```text
-Score the subject transcript against all expected paths. Bias toward finding failures. PASS only if conceptual text-only, visual offer, declines, accepts, and stale visual paths match the fixture and cite rules.
+Score the subject transcript against all expected paths. Verify each cited rule exists in the current skill or guide. Bias toward finding failures. PASS only if conceptual text-only, visual offer, declines, accepts, and stale visual paths match the fixture and cite real rules.
 ```
 
 Expected: PASS.
 
 **Step 3: Write proof artifact**
 
-Create `docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md`:
+Append GREEN proof to `docs/plans/2026-06-30-brainstorm-visualization-behavior-proof.md`:
 
 ```markdown
 # Brainstorm Visualization Behavior Proof
