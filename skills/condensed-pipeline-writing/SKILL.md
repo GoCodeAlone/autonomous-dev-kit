@@ -82,7 +82,7 @@ Verify: `tests/hook-contracts.sh` → PASS
 **Compressed JSONL state row**
 
 ```json
-{"ts":"2026-05-25T20:01:51Z","ev":"phase","pl":"docs/plans/x.md","ph":"T3","st":"done","e":"tests/hook-contracts.sh PASS","nx":"T4"}
+{"ts":"2026-05-25T20:01:51Z","ev":"phase","pl":"docs/plans/x.md","ph":"T3 software checkpoint","st":"done","pa":"open","e":"tests/hook-contracts.sh PASS; release pending","nx":"T3 release acceptance"}
 ```
 
 ## Compressed State
@@ -101,6 +101,7 @@ JSON/JSONL state is internal pipeline data. Use compact stable keys:
 | `pl` | plan path/name |
 | `ph` | phase/task id |
 | `st` | status enum |
+| `pa` | optional parent-plan acceptance: `open`; absence is unknown |
 | `h` | lock/hash prefix or digest |
 | `e` | evidence |
 | `nx` | next action |
@@ -111,6 +112,14 @@ Prefer enums and path/id references over prose. Keep old parsers tolerant during
 migration (`tool/detail` legacy rows may exist). Do not store long prompts,
 transcripts, or review bodies in state; state should re-anchor agents, not
 duplicate artifacts.
+
+For `ev:phase`, `st:done` records only the named checkpoint. It never proves
+the containing task, product, release, or entire plan accepted.
+Missing `pa` means unknown; do not infer acceptance from legacy done rows. Keep `pa:open`
+until the owning agent verifies aggregate requirements in the parent plan's
+authorized scope. Record outstanding acceptance gates in `e` and `nx`.
+Do not add publication or human approval requirements that scope does not
+contain. Whole-plan completion still uses `scope-lock-complete` after verification.
 
 ## Density Targets
 

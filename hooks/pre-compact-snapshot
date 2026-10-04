@@ -108,7 +108,7 @@ if [ -d "$plans_dir" ]; then
                     *) resolved="${cwd_dir}/${plan}" ;;
                 esac
                 [ -f "$resolved" ] || continue
-                grep -q '\*\*Status:\*\* Locked' "$resolved" 2>/dev/null || continue
+                grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$resolved" 2>/dev/null || continue
                 printf '%s\n' "$resolved"
             done
     }
@@ -128,7 +128,7 @@ if [ -d "$plans_dir" ]; then
         lock_file="${plan}.scope-lock"
 
         # Extract Status line
-        status_line=$(grep '\*\*Status:\*\*' "$plan" 2>/dev/null | tail -1 | sed 's/.*\*\*Status:\*\*[[:space:]]*//' || true)
+        status_line=$(grep -E '^\*\*Status:\*\*' "$plan" 2>/dev/null | tail -1 | sed 's/^\*\*Status:\*\*[[:space:]]*//' || true)
 
         # Read the manifest hash stored inside the lock file (first non-comment,
         # non-blank line). This is the same value tests/plan-scope-check.sh

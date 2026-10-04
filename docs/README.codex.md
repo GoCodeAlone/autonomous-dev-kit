@@ -2,6 +2,33 @@
 
 Guide for using Autonomous Dev Kit with OpenAI Codex via native skill discovery.
 
+## Native Plugin Installation and Update
+
+For the full plugin, including hooks, use Codex's native marketplace commands:
+
+```bash
+codex plugin marketplace add GoCodeAlone/autodev-marketplace
+codex plugin add autodev@autodev-marketplace
+codex plugin list --marketplace autodev-marketplace --json
+```
+
+To update an existing native installation:
+
+```bash
+codex plugin marketplace upgrade autodev-marketplace
+codex plugin add autodev@autodev-marketplace
+codex plugin list --marketplace autodev-marketplace --json
+```
+
+Verify the installed version against the desired official tag and Release.
+A Git marketplace source can follow repository HEAD, so the version number
+alone does not identify its exact source commit. The native installer can prune
+older version caches, including custom files. Back up needed configuration and
+plugin files outside the cache before upgrading; active sessions can still
+reference prior cache paths. These commands
+do not restart active sessions; use a new session to observe updated host
+discovery and hook dispatch. The Skills CLI below installs skills only.
+
 ## Quick Install
 
 From your project root:

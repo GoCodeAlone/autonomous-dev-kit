@@ -10,6 +10,7 @@ FIN="$ROOT/skills/finishing-a-development-branch/SKILL.md"
 RUNTIME="$ROOT/skills/runtime-launch-validation/SKILL.md"
 VERIFY="$ROOT/skills/verification-before-completion/SKILL.md"
 PLAN="$ROOT/skills/writing-plans/SKILL.md"
+CONDENSED="$ROOT/skills/condensed-pipeline-writing/SKILL.md"
 fail=0
 pass(){ printf 'PASS: %s\n' "$1"; }
 bad(){ printf 'FAIL: %s\n' "$1" >&2; fail=$((fail+1)); }
@@ -89,5 +90,29 @@ has "$ADR" "Missing declared integration matrix" \
 has "$PLAN" "Declared integration / extension" \
   && pass "#79 writing-plans has declared-integration verification class" \
   || bad  "#79 writing-plans missing declared-integration verification class"
+
+# Checkpoint completion must not silently promote the owning plan to accepted.
+if has "$CONDENSED" '"pa":"open"'; then
+  pass "checkpoint example keeps parent-plan acceptance open"
+else
+  bad "checkpoint example missing parent-plan acceptance field"
+fi
+# Literal Markdown backticks are part of the contract, not command substitution.
+# shellcheck disable=SC2016
+if has "$CONDENSED" 'Missing `pa` means unknown'; then
+  pass "legacy checkpoint rows do not imply parent acceptance"
+else
+  bad "legacy checkpoint acceptance semantics missing"
+fi
+if has "$CONDENSED" 'only the named checkpoint'; then
+  pass "phase done is explicitly limited to the named checkpoint"
+else
+  bad "phase done meaning can be confused with parent acceptance"
+fi
+if has "$CONDENSED" 'Do not add publication or human approval requirements'; then
+  pass "acceptance guidance cannot invent release or approval scope"
+else
+  bad "acceptance guidance lacks authorized-scope limit"
+fi
 
 echo ""; echo "Results: $fail failure(s)"; [ "$fail" -eq 0 ]

@@ -91,7 +91,7 @@ find_locked_plans() {
                     *) resolved="${cwd_dir}/${plan}" ;;
                 esac
                 [ -f "$resolved" ] || continue
-                grep -q '\*\*Status:\*\* Locked' "$resolved" 2>/dev/null || continue
+                grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$resolved" 2>/dev/null || continue
                 printf '%s\n' "$resolved"
             done
     }
@@ -154,7 +154,9 @@ Before stopping, decide whether this is:
   2. Completion of the entire locked design.
 
 If this is only a phase/task completion:
-  - Append one compact JSONL row to ${progress_file}: {\"ts\":\"<UTC>\",\"ev\":\"phase\",\"pl\":\"${first_plan_name}\",\"ph\":\"<completed phase/task>\",\"st\":\"done\",\"e\":\"<verification evidence>\",\"nx\":\"<next phase/task>\"}
+  - Append one compact JSONL row to ${progress_file}: {\"ts\":\"<UTC>\",\"ev\":\"phase\",\"pl\":\"${first_plan_name}\",\"ph\":\"<completed checkpoint>\",\"st\":\"done\",\"pa\":\"open\",\"e\":\"<verification evidence>\",\"nx\":\"<next phase/task or acceptance gate>\"}
+  - A done phase row records only the named checkpoint; it does not establish parent-plan acceptance. Missing pa means unknown, never accepted.
+  - Keep parent-plan acceptance open until the owning agent verifies all applicable requirements in the parent plan's authorized scope. Record pending review, merge, release, installation, or runtime gates when required by that scope; do not invent publication or human approval requirements.
   - Continue automatically into the next phase/task from the Scope Manifest.
 
 Only stop if one of these is true:
