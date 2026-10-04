@@ -20,6 +20,7 @@ Observed stale reminders are not all attributed to the selector bug: a primary c
 
 - R1: historical inline status text must not activate terminal plans; current anchored Locked status must retain guards. Completion helper must reject terminal plans before changing state and support existing whitespace convention.
 - R2: `ev:phase, st:done` means the named checkpoint only. Add optional `pa:open` parent-acceptance guidance; acceptance needs full manifest/release/runtime evidence. No historical state migration.
+- Contract choice: see `decisions/0006-separate-checkpoints-from-parent-acceptance.md`.
 - R3: all manifests version 6.6.2; keep newer main changes; official immutable tag and Release; native Codex installation verified against release source without restarting active sessions.
 
 ## Alternatives and Self-Challenge
