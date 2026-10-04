@@ -12,14 +12,14 @@ Source: `AGENTS.md`; workspace design guidance requires generic plugin behavior,
 |---|---|---|
 | P1 | Recent permitted project progress records distinguish phase `done` from unaccepted tasks/releases; stale June-plan Stop reminders recur. | R1 anchored current-status checks; R2 explicit parent acceptance in checkpoint advice. |
 | P1 | Session selectors in completion/prompt/compact hooks use unanchored status grep; workspace/pre-tool selectors already anchor it. Completion helper has the same gap. | Reproduce attributed terminal-status docs with historical inline Locked text, then fix four selectors and matching completion rewrite. |
-| P2 | Official tag v6.6.1 exists; installed cache matches current main except mutable progress state. Marketplace advertises v6.5.11; latest GitHub Release is v6.5.0 because automation creates only tags. | R3 publish v6.6.2 using existing tag/marketplace process plus a GitHub Release; verify exact source before native install. |
+| P2 | Official [tag v6.6.1](https://github.com/GoCodeAlone/autonomous-dev-kit/tree/v6.6.1) is `8fb5671`; installed cache matches main `ac761fe` except mutable progress state. [Marketplace manifest](https://github.com/GoCodeAlone/autodev-marketplace/blob/2c6cdec4fb06f55547c8d779fb92718aa3d921c4/.claude-plugin/marketplace.json) advertises v6.5.11; [Release Tag workflow](https://github.com/GoCodeAlone/autonomous-dev-kit/blob/ac761fe/.github/workflows/release-tag.yml) creates tags without Release pages. | R3 publish v6.6.2 using existing tag/marketplace process plus a GitHub Release; verify exact source before native install. |
 
 Observed stale reminders are not all attributed to the selector bug: a primary checkout can remain Locked while another worktree owns an Abandoned copy. Do not rewrite another workstream's plan or attribution.
 
 ## Requirements
 
 - R1: historical inline status text must not activate terminal plans; current anchored Locked status must retain guards. Completion helper must reject terminal plans before changing state and support existing whitespace convention.
-- R2: `ev:phase, st:done` means the named checkpoint only. Add optional `pa:open` parent-acceptance guidance; acceptance needs full manifest/release/runtime evidence. No historical state migration.
+- R2: `ev:phase, st:done` means the named checkpoint only. Add optional `pa:open` parent-plan acceptance guidance; acceptance needs verified aggregate evidence applicable to the parent's authorized scope. Do not invent publication or human approval requirements. No historical state migration.
 - Contract choice: see `decisions/0006-separate-checkpoints-from-parent-acceptance.md`.
 - R3: all manifests version 6.6.2; keep newer main changes; official immutable tag and Release; native Codex installation verified against release source without restarting active sessions.
 
@@ -49,7 +49,7 @@ One repository PR; tag/Release plus existing marketplace notification. No protec
 
 ## Multi-Component Validation
 
-Real hook scripts receive synthetic events and inspect actual fixture status/state; helper rejection asserts no mutation. Full AGENTS/CI contract checks. Native Codex marketplace/add/list in isolated home, then authorized user install with source identity and hook-wrapper smoke.
+Real hook scripts receive synthetic events and inspect actual fixture status/state; helper rejection asserts no mutation. Full AGENTS/CI contract checks on final candidate. Native Codex marketplace/add/list in isolated home, same-identity upgrade/rollback rehearsal, then authorized user install with source identity and hook-wrapper smoke. Host chat lifecycle dispatch is deferred until a new session observes it; direct wrapper execution is script smoke only, not proof of host callback invocation.
 
 ## Rollback
 
