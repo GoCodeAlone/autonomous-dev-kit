@@ -54,3 +54,9 @@ Real hook scripts receive synthetic events and inspect actual fixture status/sta
 ## Rollback
 
 Revert PR with a successor patch version; never retag. Preserve previous installed cache and relevant config/plugin metadata in a private local backup. Use supported native plugin commands with an isolated pinned marketplace for rollback validation; never hand-edit trust or remove active caches. If native rollback is unsupported, report before changing the user install.
+
+### Backport 2026-10-04: native installer cache pruning
+
+Cause: isolated native upgrade removes the old version cache, including a custom sentinel.
+Evidence: same-identity native 6.6.1→6.6.2→exact prior source rollback succeeded; 239 prior source files/config settings verified. Restoring a byte-identical private cache backup beside the candidate leaves native listing at6.6.2.
+Change: backups must live outside the plugin cache. User installation remains held until old active cache paths can be retained safely; no trust/config bypass. Scope: Task3 preservation/recovery, no manifest change.

@@ -22,8 +22,10 @@ codex plugin list --marketplace autodev-marketplace --json
 
 Verify the installed version against the desired official tag and Release.
 A Git marketplace source can follow repository HEAD, so the version number
-alone does not identify its exact source commit. Retain prior configuration
-and plugin files before upgrading a customized installation. These commands
+alone does not identify its exact source commit. The native installer can prune
+older version caches, including custom files. Back up needed configuration and
+plugin files outside the cache before upgrading; active sessions can still
+reference prior cache paths. These commands
 do not restart active sessions; use a new session to observe updated host
 discovery and hook dispatch. The Skills CLI below installs skills only.
 

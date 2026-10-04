@@ -1387,13 +1387,14 @@ test_session_hooks_keep_current_locked_status_with_whitespace() {
 }
 
 test_scope_lock_complete_rejects_terminal_status_without_mutation() {
-  local tmp status output rc plan lock state_file progress_file
+  local tmp status output rc plan lock state_file progress_file compact_file
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state" "$tmp/.autodev/state"
   plan="$tmp/docs/plans/terminal.md"
   lock="${plan}.scope-lock"
   state_file="$tmp/.claude/autodev-state/session-locks.jsonl"
+  compact_file="$tmp/.claude/autodev-state/in-progress.jsonl"
   progress_file="$tmp/.autodev/state/phase-progress.jsonl"
   for status in Abandoned Complete; do
     emit_draft_fixture "$plan" terminal
@@ -1402,16 +1403,21 @@ test_scope_lock_complete_rejects_terminal_status_without_mutation() {
     # Retained sidecar is deliberately valid: rejection must be status-based, not hash-based.
     bash "$REPO_ROOT/hooks/scope-lock-apply" "$plan" >/dev/null
     jq -nc '{ev:"session-lock",session:"session.jsonl",pl:"docs/plans/terminal.md"}' > "$state_file"
+    jq -nc '{ev:"lock",pl:"docs/plans/terminal.md",st:"Locked historical"}' > "$compact_file"
     printf '{"ev":"phase","st":"done","pa":"open"}\n' > "$progress_file"
     cp "$plan" "$plan.before"; cp "$lock" "$lock.before"
     cp "$state_file" "$state_file.before"; cp "$progress_file" "$progress_file.before"
+    cp "$compact_file" "$compact_file.before"
+    find "$tmp/.claude/autodev-state" "$tmp/.autodev/state" -print | sort > "$tmp/state-paths.before"
     set +e
     output="$(cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-complete" docs/plans/terminal.md --evidence supporting 2>&1)"
     rc=$?
     set -e
+    find "$tmp/.claude/autodev-state" "$tmp/.autodev/state" -print | sort > "$tmp/state-paths.after"
     if [ "$rc" -ne 0 ] && printf '%s' "$output" | grep -q 'plan is not locked' \
       && cmp -s "$plan" "$plan.before" && cmp -s "$lock" "$lock.before" \
-      && cmp -s "$state_file" "$state_file.before" && cmp -s "$progress_file" "$progress_file.before"; then
+      && cmp -s "$state_file" "$state_file.before" && cmp -s "$progress_file" "$progress_file.before" \
+      && cmp -s "$compact_file" "$compact_file.before" && cmp -s "$tmp/state-paths.before" "$tmp/state-paths.after"; then
       pass "scope-lock-complete: rejects $status with no plan/lock/state mutation"
     else
       fail "scope-lock-complete: $status historical Locked text accepted or state changed (exit $rc)"
@@ -1420,7 +1426,7 @@ test_scope_lock_complete_rejects_terminal_status_without_mutation() {
 }
 
 test_scope_lock_complete_updates_current_locked_status_with_whitespace() {
-  local tmp plan output
+  local tmp plan output rc
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   mkdir -p "$tmp/docs/plans"
@@ -1429,8 +1435,11 @@ test_scope_lock_complete_updates_current_locked_status_with_whitespace() {
   awk '{sub(/^\*\*Status:\*\* Locked/, "**Status:**\tLocked"); print}' "$plan" > "$plan.tmp"
   mv "$plan.tmp" "$plan"
   bash "$REPO_ROOT/hooks/scope-lock-apply" "$plan" >/dev/null
-  output="$(cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-complete" docs/plans/active.md --evidence supporting 2>&1 || true)"
-  if grep -qE '^\*\*Status:\*\*[[:space:]]+Complete ' "$plan" && [ ! -e "$plan.scope-lock" ]; then
+  set +e
+  output="$(cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-complete" docs/plans/active.md --evidence supporting 2>&1)"
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ] && grep -qE '^\*\*Status:\*\*[[:space:]]+Complete ' "$plan" && [ ! -e "$plan.scope-lock" ]; then
     pass "scope-lock-complete: updates current Locked status with whitespace"
   else
     fail "scope-lock-complete: whitespace Locked status not completed: $output"
