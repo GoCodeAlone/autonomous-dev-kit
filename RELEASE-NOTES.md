@@ -1,5 +1,16 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.6.2 — 2026-10-04
+
+Session plan status and checkpoint acceptance fixes.
+
+- Session-owned Stop, prompt, and PreCompact guards now match anchored plan status lines, ignoring historical inline `Locked` text in Draft, Abandoned, or Complete plans. PreCompact records the current status line.
+- `scope-lock-complete` rejects terminal plans before changing documents, locks, or state. Its status rewrite now supports the same whitespace as the plan guards.
+- Phase completion advice records optional `pa:open` parent-plan acceptance. A `st:done` checkpoint or legacy row never establishes whole-plan acceptance; pending gates follow the parent plan's authorized scope.
+- Added terminal-status, no-mutation, whitespace, and checkpoint regression coverage; preserved the post-v6.6.1 brainstorming visual companion improvements.
+
+No historical state migration is required. Existing sessions pick up the updated skills and hooks when the host reloads them; installation does not restart active sessions.
+
 ## v6.6.1 — 2026-06-30
 
 Zed WSL2 install fix.
