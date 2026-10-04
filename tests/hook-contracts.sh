@@ -1017,6 +1017,7 @@ PLAN
   pass "completion-claim-guard: helper guidance is host-neutral"
 }
 
+
 test_pretool_records_session_lock_for_scope_lock_apply() {
   local tmp transcript output state_file
   tmp="$(mktemp -d)"
@@ -1307,6 +1308,111 @@ test_completion_ignores_prose_mention_of_locked_status() {
     return
   fi
   pass "completion-claim-guard: anchored grep ignores prose mention of Locked status"
+}
+
+test_session_hooks_ignore_terminal_status_with_historical_locked_text() {
+  local tmp status hook payload output state_file
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
+  state_file="$tmp/.claude/autodev-state/session-locks.jsonl"
+  jq -nc '{ev:"session-lock",session:"session.jsonl",pl:"docs/plans/terminal.md"}' > "$state_file"
+  payload=$(jq -nc --arg cwd "$tmp" --arg tp "$tmp/session.jsonl" \
+    '{cwd:$cwd,transcript_path:$tp,prompt:"continue autonomously",stop_hook_active:false,last_assistant_message:"Checkpoint done."}')
+  for status in Abandoned Complete Draft; do
+    printf '**Status:** %s\nHistorical marker: **Status:** Locked 2026-05-26T00:00:00Z\n' \
+      "$status" > "$tmp/docs/plans/terminal.md"
+    for hook in completion-claim-guard prompt-strict-interpretation pre-compact-snapshot; do
+      output="$(run_hook "$hook" "$payload")"
+      # PreCompact emits {} when no active plan, while the other hooks emit nothing.
+      if [ -n "$output" ] && ! printf '%s' "$output" | jq -e '. == {}' >/dev/null 2>&1; then
+        fail "$hook: attributed $status plan with historical Locked text triggered reminder"
+      else
+        pass "$hook: ignores attributed $status plan with historical Locked text"
+      fi
+    done
+  done
+}
+
+test_session_hooks_keep_current_locked_status_with_whitespace() {
+  local tmp payload hook output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state"
+  printf '**Status:**\tLocked 2026-05-26T00:00:00Z\nHistorical marker: **Status:** Complete old\n' \
+    > "$tmp/docs/plans/active.md"
+  jq -nc '{ev:"session-lock",session:"session.jsonl",pl:"docs/plans/active.md"}' \
+    > "$tmp/.claude/autodev-state/session-locks.jsonl"
+  payload=$(jq -nc --arg cwd "$tmp" --arg tp "$tmp/session.jsonl" \
+    '{cwd:$cwd,transcript_path:$tp,prompt:"continue autonomously",stop_hook_active:false,last_assistant_message:"Checkpoint done."}')
+  for hook in completion-claim-guard prompt-strict-interpretation pre-compact-snapshot; do
+    output="$(run_hook "$hook" "$payload")"
+    if printf '%s' "$output" | jq -e \
+      '(.reason // .hookSpecificOutput.additionalContext // "") | contains("active.md")' >/dev/null 2>&1; then
+      pass "$hook: retains attributed current Locked status with whitespace"
+    else
+      fail "$hook: missed attributed current Locked status with whitespace"
+    fi
+    if [ "$hook" = pre-compact-snapshot ]; then
+      if jq -e 'select(.ev == "lock" and (.st | startswith("Locked")))' \
+        "$tmp/.claude/autodev-state/in-progress.jsonl" >/dev/null 2>&1; then
+        pass "pre-compact-snapshot: records current status, not historical inline status"
+      else
+        fail "pre-compact-snapshot: did not record current Locked status"
+      fi
+    fi
+  done
+}
+
+test_scope_lock_complete_rejects_terminal_status_without_mutation() {
+  local tmp status output rc plan lock state_file progress_file
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans" "$tmp/.claude/autodev-state" "$tmp/.autodev/state"
+  plan="$tmp/docs/plans/terminal.md"
+  lock="${plan}.scope-lock"
+  state_file="$tmp/.claude/autodev-state/session-locks.jsonl"
+  progress_file="$tmp/.autodev/state/phase-progress.jsonl"
+  for status in Abandoned Complete; do
+    emit_draft_fixture "$plan" terminal
+    sed "s/^\*\*Status:\*\* Draft/**Status:** $status/" "$plan" > "$plan.tmp"
+    mv "$plan.tmp" "$plan"
+    # Retained sidecar is deliberately valid: rejection must be status-based, not hash-based.
+    bash "$REPO_ROOT/hooks/scope-lock-apply" "$plan" >/dev/null
+    jq -nc '{ev:"session-lock",session:"session.jsonl",pl:"docs/plans/terminal.md"}' > "$state_file"
+    printf '{"ev":"phase","st":"done","pa":"open"}\n' > "$progress_file"
+    cp "$plan" "$plan.before"; cp "$lock" "$lock.before"
+    cp "$state_file" "$state_file.before"; cp "$progress_file" "$progress_file.before"
+    set +e
+    output="$(cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-complete" docs/plans/terminal.md --evidence supporting 2>&1)"
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ] && printf '%s' "$output" | grep -q 'plan is not locked' \
+      && cmp -s "$plan" "$plan.before" && cmp -s "$lock" "$lock.before" \
+      && cmp -s "$state_file" "$state_file.before" && cmp -s "$progress_file" "$progress_file.before"; then
+      pass "scope-lock-complete: rejects $status with no plan/lock/state mutation"
+    else
+      fail "scope-lock-complete: $status historical Locked text accepted or state changed (exit $rc)"
+    fi
+  done
+}
+
+test_scope_lock_complete_updates_current_locked_status_with_whitespace() {
+  local tmp plan output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans"
+  plan="$tmp/docs/plans/active.md"
+  emit_locked_fixture "$plan" active
+  awk '{sub(/^\*\*Status:\*\* Locked/, "**Status:**\tLocked"); print}' "$plan" > "$plan.tmp"
+  mv "$plan.tmp" "$plan"
+  bash "$REPO_ROOT/hooks/scope-lock-apply" "$plan" >/dev/null
+  output="$(cd "$tmp" && bash "$REPO_ROOT/hooks/scope-lock-complete" docs/plans/active.md --evidence supporting 2>&1 || true)"
+  if grep -qE '^\*\*Status:\*\*[[:space:]]+Complete ' "$plan" && [ ! -e "$plan.scope-lock" ]; then
+    pass "scope-lock-complete: updates current Locked status with whitespace"
+  else
+    fail "scope-lock-complete: whitespace Locked status not completed: $output"
+  fi
 }
 
 test_subagent_scope_guard_ignores_unattributed_workspace_lock() {
@@ -1942,6 +2048,10 @@ test_completion_ignores_single_workspace_lock_when_session_has_no_lock
 test_completion_uses_session_locked_plan_only
 test_completion_allows_hard_blocker
 test_completion_ignores_prose_mention_of_locked_status
+test_session_hooks_ignore_terminal_status_with_historical_locked_text
+test_session_hooks_keep_current_locked_status_with_whitespace
+test_scope_lock_complete_rejects_terminal_status_without_mutation
+test_scope_lock_complete_updates_current_locked_status_with_whitespace
 test_pretool_allows_locked_plan_text_edit
 test_subagent_allows_non_manifest_plan_backport
 test_subagent_scope_guard_ignores_unattributed_workspace_lock

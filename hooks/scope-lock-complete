@@ -65,7 +65,7 @@ plan_abs=$(canonical_path_from_base "$PWD" "$plan") || {
     exit 2
 }
 
-if ! grep -q '\*\*Status:\*\* Locked' "$plan_abs" 2>/dev/null; then
+if ! grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$plan_abs" 2>/dev/null; then
     printf 'scope-lock-complete: plan is not locked: %s\n' "$plan_abs" >&2
     exit 2
 fi
@@ -167,7 +167,7 @@ cleanup_tmp() {
 trap cleanup_tmp EXIT
 
 awk -v ts="$ts" '
-    !done && /^\*\*Status:\*\* Locked/ {
+    !done && /^\*\*Status:\*\*[[:space:]]+Locked/ {
         print "**Status:** Complete " ts
         done = 1
         next

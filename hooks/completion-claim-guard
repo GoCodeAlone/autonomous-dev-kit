@@ -91,7 +91,7 @@ find_locked_plans() {
                     *) resolved="${cwd_dir}/${plan}" ;;
                 esac
                 [ -f "$resolved" ] || continue
-                grep -q '\*\*Status:\*\* Locked' "$resolved" 2>/dev/null || continue
+                grep -qE '^\*\*Status:\*\*[[:space:]]+Locked' "$resolved" 2>/dev/null || continue
                 printf '%s\n' "$resolved"
             done
     }
