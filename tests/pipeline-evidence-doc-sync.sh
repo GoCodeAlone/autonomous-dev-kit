@@ -92,17 +92,27 @@ has "$PLAN" "Declared integration / extension" \
   || bad  "#79 writing-plans missing declared-integration verification class"
 
 # Checkpoint completion must not silently promote the owning plan to accepted.
-has "$CONDENSED" '"pa":"open"' \
-  && pass "checkpoint example keeps parent-plan acceptance open" \
-  || bad "checkpoint example missing parent-plan acceptance field"
-has "$CONDENSED" 'Missing `pa` means unknown' \
-  && pass "legacy checkpoint rows do not imply parent acceptance" \
-  || bad "legacy checkpoint acceptance semantics missing"
-has "$CONDENSED" 'only the named checkpoint' \
-  && pass "phase done is explicitly limited to the named checkpoint" \
-  || bad "phase done meaning can be confused with parent acceptance"
-has "$CONDENSED" 'Do not add publication or human approval requirements' \
-  && pass "acceptance guidance cannot invent release or approval scope" \
-  || bad "acceptance guidance lacks authorized-scope limit"
+if has "$CONDENSED" '"pa":"open"'; then
+  pass "checkpoint example keeps parent-plan acceptance open"
+else
+  bad "checkpoint example missing parent-plan acceptance field"
+fi
+# Literal Markdown backticks are part of the contract, not command substitution.
+# shellcheck disable=SC2016
+if has "$CONDENSED" 'Missing `pa` means unknown'; then
+  pass "legacy checkpoint rows do not imply parent acceptance"
+else
+  bad "legacy checkpoint acceptance semantics missing"
+fi
+if has "$CONDENSED" 'only the named checkpoint'; then
+  pass "phase done is explicitly limited to the named checkpoint"
+else
+  bad "phase done meaning can be confused with parent acceptance"
+fi
+if has "$CONDENSED" 'Do not add publication or human approval requirements'; then
+  pass "acceptance guidance cannot invent release or approval scope"
+else
+  bad "acceptance guidance lacks authorized-scope limit"
+fi
 
 echo ""; echo "Results: $fail failure(s)"; [ "$fail" -eq 0 ]
