@@ -1017,6 +1017,28 @@ PLAN
   pass "completion-claim-guard: helper guidance is host-neutral"
 }
 
+test_completion_checkpoint_keeps_parent_acceptance_open() {
+  local tmp payload output
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/docs/plans"
+  emit_locked_fixture "$tmp/docs/plans/active.md" active
+  payload=$(jq -nc --arg cwd "$tmp" \
+    '{cwd:$cwd,stop_hook_active:false,last_assistant_message:"Software checkpoint complete. Release still pending."}')
+  output="$(run_hook completion-claim-guard "$payload")"
+  if printf '%s' "$output" | jq -e '
+    .decision == "block" and
+    (.reason | contains("\"pa\":\"open\"")) and
+    (.reason | contains("only the named checkpoint")) and
+    (.reason | contains("parent-plan acceptance")) and
+    (.reason | contains("authorized scope")) and
+    (.reason | contains("Missing pa means unknown"))
+  ' >/dev/null; then
+    pass "completion-claim-guard: phase done keeps parent acceptance open and scope-specific"
+  else
+    fail "completion-claim-guard: missing checkpoint-only parent acceptance guidance"
+  fi
+}
 
 test_pretool_records_session_lock_for_scope_lock_apply() {
   local tmp transcript output state_file
@@ -2041,6 +2063,7 @@ test_scope_lock_complete_rejects_progress_directory
 test_completion_continuation_block
 test_completion_continuation_block_keeps_heading_separator_when_flattened
 test_completion_continuation_block_uses_host_neutral_helper_guidance
+test_completion_checkpoint_keeps_parent_acceptance_open
 test_pretool_records_session_lock_for_scope_lock_apply
 test_pretool_ignores_prose_mention_of_locked_status
 test_completion_ignores_ambiguous_workspace_locks_when_session_has_no_lock

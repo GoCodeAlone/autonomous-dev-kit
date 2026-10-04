@@ -10,6 +10,7 @@ FIN="$ROOT/skills/finishing-a-development-branch/SKILL.md"
 RUNTIME="$ROOT/skills/runtime-launch-validation/SKILL.md"
 VERIFY="$ROOT/skills/verification-before-completion/SKILL.md"
 PLAN="$ROOT/skills/writing-plans/SKILL.md"
+CONDENSED="$ROOT/skills/condensed-pipeline-writing/SKILL.md"
 fail=0
 pass(){ printf 'PASS: %s\n' "$1"; }
 bad(){ printf 'FAIL: %s\n' "$1" >&2; fail=$((fail+1)); }
@@ -89,5 +90,19 @@ has "$ADR" "Missing declared integration matrix" \
 has "$PLAN" "Declared integration / extension" \
   && pass "#79 writing-plans has declared-integration verification class" \
   || bad  "#79 writing-plans missing declared-integration verification class"
+
+# Checkpoint completion must not silently promote the owning plan to accepted.
+has "$CONDENSED" '"pa":"open"' \
+  && pass "checkpoint example keeps parent-plan acceptance open" \
+  || bad "checkpoint example missing parent-plan acceptance field"
+has "$CONDENSED" 'Missing `pa` means unknown' \
+  && pass "legacy checkpoint rows do not imply parent acceptance" \
+  || bad "legacy checkpoint acceptance semantics missing"
+has "$CONDENSED" 'only the named checkpoint' \
+  && pass "phase done is explicitly limited to the named checkpoint" \
+  || bad "phase done meaning can be confused with parent acceptance"
+has "$CONDENSED" 'Do not add publication or human approval requirements' \
+  && pass "acceptance guidance cannot invent release or approval scope" \
+  || bad "acceptance guidance lacks authorized-scope limit"
 
 echo ""; echo "Results: $fail failure(s)"; [ "$fail" -eq 0 ]
