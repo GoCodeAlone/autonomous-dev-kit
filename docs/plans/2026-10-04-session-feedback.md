@@ -21,7 +21,7 @@
 |------|-------|-------|--------|
 | 1 | Fix stale plan checks and checkpoint acceptance | Task 1, Task 2, Task 3 | fix/session-checkpoint-release-feedback |
 
-**Status:** Locked 2026-10-04T15:45:00Z
+**Status:** Locked 2026-10-04T19:41:52Z
 
 ## Guidance and Trace
 
