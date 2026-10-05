@@ -114,7 +114,6 @@ class Ledger:
                     self.validate_parents()
                     time.sleep(0.01)
             regular(self.lock)
-            deadline = time.monotonic() + LOCK_TIMEOUT
             while True:
                 try:
                     fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -290,6 +289,8 @@ def inspect_directory(project, path):
             for remaining, _ in pending:
                 os.close(remaining)
         # Inspecting a detached old inode cannot justify the current path.
+        if identity(os.stat(project, follow_symlinks=False)) != identity(os.fstat(fds[0])):
+            return "project changed during inspection"
         for parent, part, child in zip(fds, path.relative_to(project).parts, fds[1:]):
             info = os.stat(part, dir_fd=parent, follow_symlinks=False)
             if not stat.S_ISDIR(info.st_mode) or identity(info) != identity(os.fstat(child)):

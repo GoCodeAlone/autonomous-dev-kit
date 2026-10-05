@@ -323,6 +323,52 @@ class Resources(unittest.TestCase):
             target.unlink()
             backup.rename(target)
 
+    def test_project_swap_during_scan_is_protected(self):
+        self.disposable()
+        self.close()
+        module = self.module()
+        original = module.os.scandir
+        inode = self.resource.stat().st_ino
+        triggered = [False]
+        saved = self.project.with_name("original-project")
+
+        def barrier(fd):
+            if not triggered[0] and os.fstat(fd).st_ino == inode:
+                triggered[0] = True
+                self.project.rename(saved)
+                self.resource.mkdir(parents=True)
+                (self.resource / ".git").mkdir()
+                (self.resource / "replacement-data").write_bytes(b"protected replacement")
+            return original(fd)
+
+        stdout = io.StringIO()
+        with mock.patch.object(module.os, "scandir", barrier), contextlib.redirect_stdout(stdout):
+            self.assertEqual(module.main(self.args("report")), 0)
+        self.assertTrue(triggered[0])
+        self.assertFalse(self.candidates(json.loads(stdout.getvalue())))
+        self.assertEqual((saved / ".autodev/tmp/job/sentinel").read_bytes(), b"unique data\x00keep")
+        self.assertEqual((self.resource / "replacement-data").read_bytes(), b"protected replacement")
+
+    def test_new_entry_after_enumeration_is_protected(self):
+        self.disposable()
+        self.close()
+        module = self.module()
+        original = module.os.scandir
+        inode = self.resource.stat().st_ino
+
+        @contextlib.contextmanager
+        def barrier(fd):
+            with original(fd) as entries:
+                yield entries
+            if os.fstat(fd).st_ino == inode:
+                (self.resource / ".git").mkdir()
+
+        stdout = io.StringIO()
+        with mock.patch.object(module.os, "scandir", barrier), contextlib.redirect_stdout(stdout):
+            self.assertEqual(module.main(self.args("report")), 0)
+        self.assertFalse(self.candidates(json.loads(stdout.getvalue())))
+        self.assertEqual(self.sentinel.read_bytes(), b"unique data\x00keep")
+
     def test_metadata_directory_symlink_rejected(self):
         self.record()
         directory = self.state.parent
