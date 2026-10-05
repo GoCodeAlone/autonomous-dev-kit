@@ -1,7 +1,7 @@
 # Resource lifecycle verification
 
 Task 1: tests written before helper; initial run failed 24/24 because helper was
-absent. Implemented CLI/filesystem tests passed 34/34, including real concurrent
+absent. Implemented CLI/filesystem tests passed 37/37, including real concurrent
 writers, protected overlaps, unchanged sentinel bytes, failure/lock timeout,
 directory/lock swaps, corrupt metadata and no-follow/nonregular-file rejection.
 Repeated first-writer stress passed 30 concurrent batches after reproducing a

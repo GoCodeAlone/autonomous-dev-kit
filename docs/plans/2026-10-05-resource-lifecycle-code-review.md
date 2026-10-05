@@ -12,3 +12,9 @@ Reviewer inspected full spec/diff, safety attacks, static guidance/version check
 and actual helper/Go smoke evidence. No resource command, cache rewrite, scope
 expansion or manifest mismatch found. Integration proof remains direct CLI/Go;
 optional adoption and host hook invocation are not established.
+
+Follow-up RCR-04 (Minor): timeout while reaping a child could leave other owned
+fixture processes alive. Added finally kill/reap and a real timeout regression;
+this affects only test fixtures. A shared five-second lock deadline also matches
+documented acquisition limits. Independent 36-test run, eight mutation attacks and
+96 fresh-ledger concurrent operations passed before this harness-only addition.

@@ -67,6 +67,23 @@ class Resources(unittest.TestCase):
         spec.loader.exec_module(module)
         return module
 
+    def complete(self, processes, timeout=15):
+        try:
+            return [(p.communicate(timeout=timeout), p.returncode) for p in processes]
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()  # only owned fixture children; never independent jobs
+                process.communicate(timeout=5)
+
+    def test_harness_timeout_reaps_every_owned_child(self):
+        processes = [subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                     for _ in range(2)]
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.complete(processes, timeout=0.05)
+        self.assertTrue(all(p.poll() is not None for p in processes))
+
     def in_process(self, module, *args):
         stdout, stderr = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
@@ -482,7 +499,7 @@ class Resources(unittest.TestCase):
                 "--kind", "directory", "--resource", self.resource,
                 "--purpose", "test-fixture", "--retention", "disposable", "--reason", "test")],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
-        completed = [(process.communicate(timeout=15), process.returncode) for process in processes]
+        completed = self.complete(processes)
         for (stdout, stderr), code in completed:
             self.assertEqual(code, 0, stderr)
             self.assertIn("resources", json.loads(stdout))
@@ -500,7 +517,7 @@ class Resources(unittest.TestCase):
             processes.append(subprocess.Popen([sys.executable, str(HELPER), *self.args(
                 "record", "--session", str(i), "--job", "job", "--kind", "directory",
                 "--resource", path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
-        completed = [(process.communicate(timeout=15), process.returncode) for process in processes]
+        completed = self.complete(processes)
         for (_, stderr), code in completed:
             self.assertEqual(code, 0, stderr)
         data = json.loads(self.state.read_text())
