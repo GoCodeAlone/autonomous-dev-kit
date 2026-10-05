@@ -1,5 +1,16 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.6.3 — 2026-10-05
+
+Build-cache reuse and explicit job-resource closeout.
+
+- Execution, implementer and finishing guidance now prefers native/stable compatible Go caches, preserves inherited GOCACHE and requires reasons/ownership for cold-cache isolation. Docker mounts and persistent database data require explicit classification.
+- Optional POSIX `scripts/job-resources.py` records session/job resources, explicit success/failure closeout and conservative review hints. Stable locks, no-follow descriptor operations and atomic JSON writes protect cooperating concurrent writers; corrupt/unknown metadata is preserved.
+- Active, failed, unknown, reusable, database, Docker-volume and worktree resources stay protected. Overlapping protected paths, links, worktree markers, changed/unreadable trees and inspection limits suppress candidate hints. The helper never runs resource commands or deletes resources.
+- Added resource safety/concurrency regressions, guidance contracts and Ubuntu CI. Direct CLI and actual repeated Go-build smoke validate preservation/reuse; source checks do not establish host callback invocation.
+
+No existing cache migration, cleanup daemon, automatic deletion or new lifecycle hook. Adoption is explicit guidance/CLI use and cannot guarantee bounded disk usage. Install in a safe maintenance window: native upgrades can prune older plugin paths used by active sessions.
+
 ## v6.6.2 — 2026-10-04
 
 Session plan status and checkpoint acceptance fixes.
