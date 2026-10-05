@@ -113,3 +113,13 @@ contains no package compilation, rather than treating a shared path as reuse pro
 No new cold Go cache for demonstration. Host hook dispatch remains unverified and unused.
 Rollback is a successor patch/revert; leave resource metadata/resources intact.
 No installation refresh, destructive data migration, or protection-setting change.
+
+## Backport 2026-10-05: review-discovered interleavings
+
+Native concurrent nonexclusive lock creation reproduced intermittent ENOENT.
+Use exclusive first creation plus bounded existing-open retry; never recreate a
+missing lock beside an existing ledger. Independent review also demonstrated
+duplicate JSON fields dropping unknown ownership and candidate scans of detached
+old inodes. Reject duplicate fields and revalidate ancestor links plus bounded
+descendant identities/timestamps before returning a hint. Inspection also stops
+at 64 directory levels. Existing Tasks 1/3 cover these regressions; manifest unchanged.

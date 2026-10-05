@@ -1,0 +1,38 @@
+name: Resource Lifecycle
+on:
+  push:
+    paths:
+      - 'scripts/job-resources.py'
+      - 'tests/job-resources.py'
+      - 'tests/resource-lifecycle-docs.sh'
+      - 'docs/resource-lifecycle.md'
+      - 'docs/README.codex.md'
+      - 'skills/executing-plans/**'
+      - 'skills/subagent-driven-development/implementer-prompt.md'
+      - 'skills/finishing-a-development-branch/**'
+      - '.github/workflows/resource-lifecycle.yml'
+  pull_request:
+    paths:
+      - 'scripts/job-resources.py'
+      - 'tests/job-resources.py'
+      - 'tests/resource-lifecycle-docs.sh'
+      - 'docs/resource-lifecycle.md'
+      - 'docs/README.codex.md'
+      - 'skills/executing-plans/**'
+      - 'skills/subagent-driven-development/implementer-prompt.md'
+      - 'skills/finishing-a-development-branch/**'
+      - '.github/workflows/resource-lifecycle.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  resource-lifecycle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Metadata safety and concurrent ownership
+        run: python3 tests/job-resources.py
+      - name: Guidance contracts
+        run: bash tests/resource-lifecycle-docs.sh
+      - name: Python syntax
+        run: python3 -m py_compile scripts/job-resources.py tests/job-resources.py

@@ -236,10 +236,78 @@ class Resources(unittest.TestCase):
         original = json.loads(self.state.read_text())
         future = dict(original, schema=999)
         wrong = dict(original, project="/unknown")
-        for text in ["{broken", json.dumps(future), json.dumps(wrong), "[]"]:
+        duplicate = json.dumps(original).replace('"schema": 1', '"schema": 999, "schema": 1')
+        for text in ["{broken", json.dumps(future), json.dumps(wrong), "[]", duplicate]:
             self.state.write_text(text)
             self.cli("report", error=True)
             self.assertEqual(self.state.read_text(), text)
+
+    def test_duplicate_fields_preserved_for_all_commands(self):
+        self.record()
+        duplicate = self.state.read_text().replace('"owners": [', '"owners": ["unknown"], "owners": [')
+        for args in [("report",), ("record", "--session", "other", "--job", "j", "--kind", "directory",
+                                  "--resource", str(self.resource)),
+                     ("closeout", "--session", "s", "--job", "j", "--outcome", "success")]:
+            self.state.write_text(duplicate)
+            self.cli(*args, error=True)
+            self.assertEqual(self.state.read_text(), duplicate)
+
+    def test_missing_existing_lock_is_not_recreated(self):
+        self.record()
+        before = self.state.read_bytes()
+        self.state.with_suffix(".lock").unlink()
+        self.cli("record", "--session", "other", "--job", "j", "--kind", "directory",
+                 "--resource", self.resource, error=True)
+        self.assertFalse(self.state.with_suffix(".lock").exists())
+        self.assertEqual(self.state.read_bytes(), before)
+
+    def test_candidate_scan_swaps_and_changes_are_protected(self):
+        for mode in ["candidate", "ancestor", "descendant", "new-entry"]:
+            with self.subTest(mode=mode):
+                # Each subcase uses its own declared resource, avoiding restored paths.
+                resource = self.resource / mode
+                resource.mkdir()
+                sentinel = resource / "unique"
+                sentinel.write_bytes(b"original")
+                nested = resource / "nested"
+                nested.mkdir()
+                self.disposable(job=mode, path=resource)
+                self.close(job=mode)
+                module = self.module()
+                original = module.os.scandir
+                target = nested if mode == "descendant" else resource
+                target_inode = target.stat().st_ino
+                triggered = [False]
+
+                def barrier(fd):
+                    if not triggered[0] and os.fstat(fd).st_ino == target_inode:
+                        triggered[0] = True
+                        if mode == "new-entry":
+                            (resource / ".git").mkdir()
+                        else:
+                            moved = target if mode != "ancestor" else resource.parent
+                            saved = moved.with_name(moved.name + "-saved")
+                            moved.rename(saved)
+                            moved.mkdir()
+                            (moved / ".git").mkdir()
+                    return original(fd)
+
+                stdout = io.StringIO()
+                with mock.patch.object(module.os, "scandir", barrier), contextlib.redirect_stdout(stdout):
+                    self.assertEqual(module.main(self.args("report")), 0)
+                self.assertTrue(triggered[0])
+                row = next(r for r in json.loads(stdout.getvalue())["resources"] if r["resource"] == str(resource))
+                self.assertEqual(row["status"], "protected")
+                if mode == "ancestor":
+                    self.assertEqual((resource.parent.with_name(resource.parent.name + "-saved") /
+                                      mode / "unique").read_bytes(), b"original")
+                    (resource.parent / ".git").rmdir()
+                    resource.parent.rmdir()
+                    resource.parent.with_name(resource.parent.name + "-saved").rename(resource.parent)
+                elif mode == "candidate":
+                    self.assertEqual((resource.with_name(resource.name + "-saved") / "unique").read_bytes(), b"original")
+                else:
+                    self.assertEqual(sentinel.read_bytes(), b"original")
 
     def test_metadata_symlinks_rejected_without_external_writes(self):
         self.record()
@@ -368,9 +436,9 @@ class Resources(unittest.TestCase):
                 "--kind", "directory", "--resource", self.resource,
                 "--purpose", "test-fixture", "--retention", "disposable", "--reason", "test")],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
-        for process in processes:
-            stdout, stderr = process.communicate(timeout=15)
-            self.assertEqual(process.returncode, 0, stderr)
+        completed = [(process.communicate(timeout=15), process.returncode) for process in processes]
+        for (stdout, stderr), code in completed:
+            self.assertEqual(code, 0, stderr)
             self.assertIn("resources", json.loads(stdout))
         data = json.loads(self.state.read_text())
         self.assertEqual(len(data["jobs"]), 9)
@@ -386,9 +454,9 @@ class Resources(unittest.TestCase):
             processes.append(subprocess.Popen([sys.executable, str(HELPER), *self.args(
                 "record", "--session", str(i), "--job", "job", "--kind", "directory",
                 "--resource", path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
-        for process in processes:
-            _, stderr = process.communicate(timeout=15)
-            self.assertEqual(process.returncode, 0, stderr)
+        completed = [(process.communicate(timeout=15), process.returncode) for process in processes]
+        for (_, stderr), code in completed:
+            self.assertEqual(code, 0, stderr)
         data = json.loads(self.state.read_text())
         self.assertEqual(len(data["jobs"]), 4)
         self.assertEqual(len(data["resources"]), 4)

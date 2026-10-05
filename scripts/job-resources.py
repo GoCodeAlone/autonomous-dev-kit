@@ -83,14 +83,36 @@ class Ledger:
                 self.fds.append(fd)
                 self.links.append((parent, name, fd))
             self.directory = fd
+            try:
+                os.stat("job-resources.json", dir_fd=fd, follow_symlinks=False)
+                existing_ledger = True
+            except FileNotFoundError:
+                existing_ledger = False
             if not self.write:
                 try:
                     os.stat("job-resources.json", dir_fd=fd, follow_symlinks=False)
                 except FileNotFoundError:
                     self.empty = True
                     return self
-            flags = os.O_RDWR | NOFOLLOW | (os.O_CREAT if self.write else 0)
-            self.lock = os.open("job-resources.lock", flags, 0o600, dir_fd=fd)
+            deadline = time.monotonic() + LOCK_TIMEOUT
+            while True:
+                self.validate_parents()
+                try:
+                    if self.write and not existing_ledger:
+                        try:
+                            # Exclusive creation avoids native concurrent O_CREAT races.
+                            self.lock = os.open("job-resources.lock", os.O_RDWR | NOFOLLOW |
+                                                os.O_CREAT | os.O_EXCL, 0o600, dir_fd=fd)
+                        except FileExistsError:
+                            self.lock = os.open("job-resources.lock", os.O_RDWR | NOFOLLOW, dir_fd=fd)
+                    else:
+                        self.lock = os.open("job-resources.lock", os.O_RDWR | NOFOLLOW, dir_fd=fd)
+                    break
+                except FileNotFoundError:
+                    if not self.write or existing_ledger or time.monotonic() >= deadline:
+                        raise Invalid("metadata lock unavailable; manual review required")
+                    self.validate_parents()
+                    time.sleep(0.01)
             regular(self.lock)
             deadline = time.monotonic() + LOCK_TIMEOUT
             while True:
@@ -115,13 +137,16 @@ class Ledger:
             os.close(fd)
         self.fds = []
 
-    def validate(self):
+    def validate_parents(self):
         if identity(os.stat(self.project, follow_symlinks=False)) != identity(os.fstat(self.fds[0])):
             raise Invalid("project directory changed")
         for parent, name, fd in self.links:
             info = os.stat(name, dir_fd=parent, follow_symlinks=False)
             if not stat.S_ISDIR(info.st_mode) or identity(info) != identity(os.fstat(fd)):
                 raise Invalid("metadata directory changed")
+
+    def validate(self):
+        self.validate_parents()
         info = os.stat("job-resources.lock", dir_fd=self.directory, follow_symlinks=False)
         if identity(info) != identity(os.fstat(self.lock)) or not stat.S_ISREG(info.st_mode):
             raise Invalid("metadata lock changed")
@@ -142,7 +167,14 @@ class Ledger:
             raw = stream.read(MAX_METADATA + 1)
         if len(raw) > MAX_METADATA:
             raise Invalid("metadata size limit exceeded; manual review required")
-        data = json.loads(raw)
+        def unique_fields(pairs):
+            result = {}
+            for name, value in pairs:
+                if name in result:
+                    raise Invalid("duplicate metadata fields; metadata preserved")
+                result[name] = value
+            return result
+        data = json.loads(raw, object_pairs_hook=unique_fields)
         validate_data(data, self.project)
         return data
 
@@ -223,12 +255,15 @@ def inspect_directory(project, path):
                 return "worktree marker"
             except FileNotFoundError:
                 pass
-        pending = [os.dup(fd)]
+        pending = [(os.dup(fd), ())]
+        inspected = []
         count = 0
         try:
             while pending:
-                current = pending.pop()
+                current, relative = pending.pop()
                 try:
+                    info = os.fstat(current)
+                    inspected.append((relative, (identity(info), info.st_mtime_ns, info.st_ctime_ns)))
                     with os.scandir(current) as entries:
                         for entry in entries:
                             count += 1
@@ -242,16 +277,40 @@ def inspect_directory(project, path):
                             if stat.S_ISLNK(info.st_mode):
                                 return "symlink descendant"
                             if stat.S_ISDIR(info.st_mode):
+                                if len(relative) >= 64:
+                                    return "inspection depth exceeded"
                                 child = os.open(entry.name, os.O_RDONLY | DIRECTORY | NOFOLLOW, dir_fd=current)
                                 if identity(os.fstat(child)) != identity(info):
                                     os.close(child)
                                     return "directory changed during inspection"
-                                pending.append(child)
+                                pending.append((child, relative + (entry.name,)))
                 finally:
                     os.close(current)
         finally:
-            for remaining in pending:
+            for remaining, _ in pending:
                 os.close(remaining)
+        # Inspecting a detached old inode cannot justify the current path.
+        for parent, part, child in zip(fds, path.relative_to(project).parts, fds[1:]):
+            info = os.stat(part, dir_fd=parent, follow_symlinks=False)
+            if not stat.S_ISDIR(info.st_mode) or identity(info) != identity(os.fstat(child)):
+                return "directory changed during inspection"
+            try:
+                os.stat(".git", dir_fd=child, follow_symlinks=False)
+                return "worktree marker"
+            except FileNotFoundError:
+                pass
+        for relative, expected in inspected:
+            current = os.dup(fd)
+            try:
+                for part in relative:
+                    child = os.open(part, os.O_RDONLY | DIRECTORY | NOFOLLOW, dir_fd=current)
+                    os.close(current)
+                    current = child
+                info = os.fstat(current)
+                if (identity(info), info.st_mtime_ns, info.st_ctime_ns) != expected:
+                    return "tree changed during inspection"
+            finally:
+                os.close(current)
         return None
     except OSError:
         return "missing, unreadable or changed directory"
@@ -284,7 +343,10 @@ def report(data, project):
     while changed:
         changed = False
         protected = [Path(r["resource"]) for r in rows if r["kind"] != "docker-volume" and r["status"] == "protected"]
-        changed_path = any(p.resolve() != p for p in protected)
+        try:
+            changed_path = any(p.resolve() != p for p in protected)
+        except (OSError, RuntimeError):
+            changed_path = True
         for row in rows:
             if row["status"] != "review-candidate":
                 continue
@@ -352,7 +414,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         project = Path(args.project).resolve(strict=True)
-        with Ledger(project, args.command != "report") as ledger:
+        with Ledger(project, args.command == "record") as ledger:
             data = ledger.load()
             if args.command == "record":
                 record(data, args, project)
@@ -370,7 +432,7 @@ def main(argv=None):
             output = report(data, project)
         print(json.dumps(output, sort_keys=True))
         return 0
-    except (OSError, ValueError, TypeError) as error:
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
         print(json.dumps({"error": str(error), "notice": "Resources preserved; inspect metadata manually."}), file=sys.stderr)
         return 2
 
