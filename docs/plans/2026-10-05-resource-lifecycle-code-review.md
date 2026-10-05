@@ -1,6 +1,8 @@
 # Resource lifecycle independent code review
 
-Initial verdict BLOCK; exact final-head recheck pending.
+Final verdict SHIP-IT; no remaining findings. Independent review inspected
+implementation HEAD `7d2e4d923f1642b7afc7b0d934672b15e0bff9a1`, tree
+`56b6c2ecd41cf2d5f293fdf82be7e382a146cb39`; initial BLOCK findings resolved.
 
 | ID | Severity | Finding | Resolution |
 |---|---|---|---|
@@ -18,3 +20,8 @@ fixture processes alive. Added finally kill/reap and a real timeout regression;
 this affects only test fixtures. A shared five-second lock deadline also matches
 documented acquisition limits. Independent 36-test run, eight mutation attacks and
 96 fresh-ledger concurrent operations passed before this harness-only addition.
+Final independent run passed all 37 helper tests, nine mutation/corruption attacks
+and 96 concurrent operations. Requirements/trace/scope, runtime proof, failure/
+recovery, corruption/schema, ownership/identifiers, concurrency, containment/
+privacy, performance bounds, compatibility, CI, rollback/release/version skew
+and user guidance were scanned. No open production or harness finding remains.
