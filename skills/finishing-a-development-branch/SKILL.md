@@ -96,6 +96,14 @@ Stop. Don't proceed to Step 2.
 
 **If tests pass:** Continue to Step 1b.
 
+Before branch/resource closeout, follow `docs/resource-lifecycle.md`: record
+success/failure and exact cleanup review candidates with session/job ownership.
+Preserve inherited `GOCACHE` and reusable caches for later jobs. Active, unknown,
+failed resources, database data and worktrees stay protected. Optional
+`scripts/job-resources.py` reports metadata hints only; candidates require fresh
+live-use/data review and separate deletion authorization. Do not broad-prune or
+clean another session's resources as part of finishing this branch.
+
 ### Step 1b: Runtime Launch Validation (conditional)
 
 **Trigger:** the diff includes any of:

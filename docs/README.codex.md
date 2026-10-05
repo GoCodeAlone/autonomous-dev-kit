@@ -95,6 +95,14 @@ The `using-autodev` skill is discovered automatically and enforces skill usage d
 
 ## Usage
 
+For build/test resource ownership, follow [resource lifecycle guidance](resource-lifecycle.md).
+Preserve inherited `GOCACHE`, reuse compatible caches and justify cold-cache
+isolation. Identify Docker mounts and protect database data; record success/failure
+closeout while preserving active, unknown, failed and reusable resources. Optional
+`scripts/job-resources.py` is a POSIX metadata CLI, with manual records on other
+hosts. It adds no Codex lifecycle hook or automatic deletion. Host callback
+invocation is not established by these source/CLI checks.
+
 Skills are discovered automatically. Codex activates them when:
 - You mention a skill by name (e.g., "use brainstorming")
 - The task matches a skill's description
