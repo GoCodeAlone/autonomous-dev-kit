@@ -67,7 +67,8 @@ stay protected; disposable database/volume/worktree or external-path declaration
 are rejected. Every declared owner must close successfully before a disposable
 directory can become a `review-candidate`. Protected path overlaps, symlinks,
 nested/ancestor worktrees (excluding the enclosing project's own Git marker),
-unreadable/changed directories or more than 10,000 inspected entries keep it
+unreadable/changed directories, more than 10,000 inspected entries or 64 directory
+levels keep it
 protected. Reports never remove or modify resource contents.
 
 Cooperating writers serialize on a stable lock; JSON updates are atomic. Unknown,
