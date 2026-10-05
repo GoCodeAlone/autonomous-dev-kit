@@ -21,6 +21,14 @@ Task tool (general-purpose):
 
     Work from: [directory]
 
+    Resource discipline: follow `docs/resource-lifecycle.md`. Preserve inherited
+    GOCACHE and reuse compatible native/stable project/toolchain caches. Require
+    an isolation reason before a new cold cache; record its session/job owner.
+    Identify Docker mounts and protect database data. Record success/failure
+    closeout and exact cleanup review candidates, preserving active, unknown,
+    failed and reusable resources. Optional `scripts/job-resources.py` writes
+    metadata only. Never prune/delete resources or terminate another job.
+
     If you have questions, ask them before starting. Don't guess or make assumptions.
 
     When complete, DM spec-reviewer that the task is ready for the

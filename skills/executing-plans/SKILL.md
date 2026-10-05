@@ -44,6 +44,14 @@ For each task:
 3. Run verifications as specified
 4. Mark as completed
 
+Before disk-heavy builds/tests, follow `docs/resource-lifecycle.md`: preserve
+inherited `GOCACHE`, reuse a compatible native/stable project/toolchain cache,
+and justify any cold-cache allocation. Identify Docker mounts and protect database
+data. Record session/job ownership and closeout on success or failure; active,
+unknown, failed and reusable resources remain protected. The optional
+`scripts/job-resources.py` records metadata and review candidates, never deletes.
+Defer new heavy work when space is insufficient; preserve running jobs.
+
 ### Step 3: Report
 When batch complete:
 - Show what was implemented
