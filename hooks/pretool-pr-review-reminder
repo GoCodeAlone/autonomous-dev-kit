@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # hooks/pretool-pr-review-reminder
-# PreToolUse hook: reminds the agent to add Copilot as a reviewer after creating a PR.
+# PreToolUse hook: reminds the author to get independent review for a PR.
 #
-# When an agent is about to run gh pr create, inject a reminder about:
-#   1. gh CLI version requirement (v2.88+)
-#   2. Adding Copilot as a reviewer via `gh pr edit --add-reviewer copilot-pull-request-reviewer`
-#      immediately after the PR is created (not as a flag to gh pr create).
+# Before a PR creation command, remind the author about the gh version
+# requirement and independent review of the exact proposed commit.
 #
 # Global opt-out: set SUPERPOWERS_HOOKS_DISABLE=1
 
@@ -53,10 +51,10 @@ Before and after running `gh pr create`:
 (1) Ensure `gh` is version 2.88 or higher (`gh --version`).
     If it is older, upgrade gh (e.g. `gh upgrade` or follow https://cli.github.com/manual/)
     or inform the user that a manual upgrade is needed.
-(2) After the PR is created, add Copilot as a reviewer by running:
-      gh pr edit <PR-number> --add-reviewer copilot-pull-request-reviewer
-    Do NOT use `--reviewer Copilot` as a flag to `gh pr create` —
-    the correct method is `gh pr edit --add-reviewer copilot-pull-request-reviewer` post-creation.
+(2) Arrange an independent Codex review of the exact proposed commit.
+    The reviewer must not be the author. Record the reviewed commit and resolve
+    findings; if the commit changes, refresh the review for the new commit.
+    Merge only after required checks pass and any applicable security review is complete.
 </IMPORTANT>
 REMINDER
 )

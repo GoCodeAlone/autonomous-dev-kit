@@ -464,6 +464,17 @@ test_pretool_pr_review_json() {
   local output
   output="$(run_hook pretool-pr-review-reminder '{"tool_name":"Bash","tool_input":{"command":"gh pr create --title test --body test"},"cwd":"'"$REPO_ROOT"'"}')"
   assert_hook_context_json "pretool-pr-review-reminder" "PreToolUse" "$output"
+  if ! printf '%s' "$output" | jq -e '
+    .hookSpecificOutput.additionalContext
+    | contains("independent Codex review")
+      and contains("exact proposed commit")
+      and contains("required checks")
+      and (test("copilot|--add-reviewer"; "i") | not)
+  ' >/dev/null; then
+    fail "pretool-pr-review-reminder: expected independent exact-commit review without a bot reviewer request"
+    return
+  fi
+  pass "pretool-pr-review-reminder: prompts for independent exact-commit review"
 }
 
 test_pre_compact_snapshot_emits_json_when_no_locked_plans() {
