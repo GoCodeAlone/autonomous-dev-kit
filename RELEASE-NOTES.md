@@ -1,5 +1,12 @@
 # Autonomous Dev Kit Release Notes
 
+## v6.6.4 — 2026-11-25
+
+The pull-request reminder now asks for independent Codex review instead of Copilot review (#103).
+
+- Have a reviewer other than the author review the exact proposed commit. Record that commit, resolve findings, and refresh the review if the commit changes.
+- The reminder continues to require passing required checks and any applicable security review before merging.
+
 ## v6.6.3 — 2026-10-05
 
 Build-cache reuse and explicit job-resource closeout.
